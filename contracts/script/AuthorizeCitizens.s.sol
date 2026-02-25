@@ -4,14 +4,16 @@ pragma solidity ^0.8.20;
 import "forge-std/Script.sol";
 import "../src/Registry.sol";
 
-// Look up how to ensure the caller of this script has the role REGISTRATION_OFFICER_ROLE
 contract RegisterVoters is Script {
   Registry public registry ;
 
     function run() external {
-        vm.startBroadcast();
+        uint256 callerPrivateKey = vm.envUint("PRIVATE_KEY");
+        vm.startBroadcast(callerPrivateKey);
 
-        registry = new Registry();
+        address registryAddr = vm.envAddress("REGISTRY_ADDRESS");
+
+        registry = Registry(registryAddr);
 
         string memory json = vm.readFile("./data/voters.json");
 
@@ -34,6 +36,12 @@ contract RegisterVoters is Script {
             names[i] = name;
             addresses[i] = voterAddress;
         }
+
+        bytes32 role = registry.REGISTRATION_OFFICER_ROLE();
+        require(
+            registry.hasRole(role, vm.addr(callerPrivateKey)),
+            "Caller does not have REGISTRATION_OFFICER_ROLE"
+        );
 
         registry.authorizeCitizensByBatch(ninHashes, names, addresses);
         vm.stopBroadcast();
