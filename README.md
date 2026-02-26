@@ -85,12 +85,11 @@ The following contracts are to be implemented for this project.
 
 - NationalToken.sol
 - Registry.sol
-- ElectionBody.sol
-- PartyPrimaries.sol
-- Accreditation.sol
-- Election.sol
+- NationalElectionBody.sol
+- PoliticalPartiesManager.sol
+- Elections.sol
 - VoterIncentives.sol
-- PatriotNFT.sol
+- DemocracyBadge.sol
 
 ---
 
@@ -137,11 +136,11 @@ Voter struct must implement booleans isRegistered and isAccredited
 #### Dependencies
 
 - Offchain scripting logic
-- Election contract
+- Elections contract
 
 ---
 
-## Election Body Contract
+## National Election Body Contract
 
 - Contract implements registration of a list of JSON parties.
 - Party registration will include registration of party name, party chairman, and party candidate for a list of elections. In the case of no candidate for an election at a time, the string value of candidate name for such party and for such election will default to an empty string.
@@ -158,11 +157,11 @@ mapping(string => mapping(uint => PartyCandidate)) partyCandidate
 
 #### Dependencies
 
-- PartyPrimaries contract
+- PoliticalPartiesManager contract
 
 ---
 
-## Party Primaries Contract
+## Political Parties Manager Contract
 
 - Contract will have candidates that contest for party elections.
 - A partyPrimaries function will allow party members to chose their candidate, making sure only eligible party members can vote and can only vote once.
@@ -178,27 +177,8 @@ declareWinner()
 
 ---
 
-## Accreditation Contract
 
-- Checks if a voter has been accredited for the present election and reverts if already accredited. Uses the voters struct from Registry contract to access the isAccredited boolean.
-- Accredit function is restricted to only the `ELECTION_OFFICER` role.
-
-#### Functional requirement
-
-```
-Imports the Registry contract
-checkIfVoterIsRegistered()  // Internal helper
-checkIfVoterIsAccredited() // Internal helper
-accreditVoterForElection()
-```
-
-#### Dependencies
-
-- Registry Contract
-
----
-
-## Election Contract
+## Elections Contract
 
 - National voting contract among candidates of registered parties for National elections.
 - Each National election is represented by an ID.
@@ -214,13 +194,12 @@ declareWinner()
 
 #### Dependencies
 
-- Accreditation contract
 - Election Body Contract
-- Party Pramaries Contract
+- Political Parties Manager Contract
 
 ---
 
-## Patriot NFT Contract
+## Democracy Badge Contract
 
 - Implements the ERC721 token contract standard.
 - Voters can claim(mint) NFT to their address for consistent voting.
@@ -254,7 +233,7 @@ getVoterReward()  // checks if voter has the patriot NFT. Voter can claim reward
 
 #### Dependencies
 
-- Patriot NFT contract
+- Democracy Badge contract
 
 ---
 
