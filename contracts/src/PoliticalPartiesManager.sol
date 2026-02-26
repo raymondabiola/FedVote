@@ -105,10 +105,10 @@ contract primaryPrimaries {
         hasVoted[msg.sender] = true;
 
     }
-    // change wallet address for member and candidate 
+
     function DeclareWinner()
 
-    
+    // change wallet address for member and candidate 
 }
 
 
