@@ -16,6 +16,7 @@ docs/
 lib/
 
 
+
 frontend/node_modules
 frontend/.env
 frontend/.next
