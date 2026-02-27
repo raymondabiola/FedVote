@@ -34,7 +34,7 @@ contract RegisterVoters is Script {
 
             ninHashes[i] = ninHash;
             names[i] = name;
-            addresses[i] = voterAddress;
+        addresses[i] = voterAddress;
         }
 
         bytes32 role = registry.REGISTRATION_OFFICER_ROLE();
