@@ -32,7 +32,7 @@ contract NationalToken is ERC20, AccessControl {
         _setRoleAdmin(role,adminRole);
     }
 
-    function centralBankAddress() view returns(address){
+    function centralBankAddress() external view returns(address){
         return centralBank;
     }
 }
