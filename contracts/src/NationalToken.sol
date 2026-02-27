@@ -3,8 +3,6 @@ pragma solidity ^0.8.30;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
 contract NationalToken is ERC20, AccessControl {
@@ -23,7 +21,7 @@ contract NationalToken is ERC20, AccessControl {
         _grantRole(MINTERS_ROLE, _centralBank);
     }
 
-    function mint(uint _amount, address _to) public onlyRole(MINTERS_ROLE){
+    function mint(address _to, uint _amount) public onlyRole(MINTERS_ROLE){
         if(_amount == 0){
             revert ZeroAmountNotAccepted();
         }
