@@ -22,13 +22,14 @@ contract RegistryTest is Test {
     address[] addresses;
 
     error ArraysNotSameLength();
-    error NINAlreadyAuthorized();
-    error AddressAlreadyAuthorized();
+    error NINAlreadyAuthorized(bytes32 ninHash);
+    error AddressAlreadyAuthorized(address addr);
     error ZeroAddressNotAllowed();
-    error ContractAddressNotAllowed();
+    error NotARegisteredVoter();
+    error ContractAddressNotAllowed(address addr);
     error InvalidNIN();
-    error InvalidGovernmentRegisteredFirstName();
-    error AddressNotFoundInDataBase();
+    error InvalidGovernmentRegisteredFirstName(string governmentRegisteredFirstName, string inputedName);
+    error NINNotFoundInDataBase();
     error EmptyStringInputed();
     error CitizenCannotRegisterTwice();
     error AccessControlUnauthorizedAccount(address account, bytes32 neededRole);
@@ -80,7 +81,7 @@ simulateArrayPopulate();
 assertTrue(registry.getValidityOfNIN(2345));
 assertTrue(registry.getValidityOfNIN(3388));
 assertTrue(registry.getValidityOfNIN(8871));
-assertEq(registry.getValidAddressForNIN(8871), user3);
+assertEq(registry.getValidNINHashForAddress(user3), ninHashes[2]);
 assertTrue(registry.getValidityOfAddress(user2));
 }
 
@@ -94,12 +95,23 @@ registry.voterSelfRegister(2346, "Alice");
 
 //Edge case test for when a valid citizen tries to register with an Invalid government registered first name 
 vm.prank(user1);
-vm.expectRevert(InvalidGovernmentRegisteredFirstName.selector);
+vm.expectRevert(
+    abi.encodeWithSelector(
+            InvalidGovernmentRegisteredFirstName.selector,
+            "Alice",
+            "Aliee"
+        )
+    );
 registry.voterSelfRegister(2345, "Aliee");
 
 // Edge case test for a wrong address trying to register with a valid voter information leak.
 vm.prank(user4);
-vm.expectRevert(AddressNotFoundInDataBase.selector);
+vm.expectRevert(
+        abi.encodeWithSelector(
+            NINNotFoundInDataBase.selector,
+            user4
+        )
+    );
 registry.voterSelfRegister(2345, "Alice");
 
 // Edge case for when a valid citizen tries to register with an empty string.
@@ -110,10 +122,9 @@ registry.voterSelfRegister(2345, "");
 // Test if data of successful registration is correct.
 vm.prank(user1);
 registry.voterSelfRegister(2345, "Alice");
-assertEq(registry.getVoterRegistrationData(2345).voterAddress, user1);
-assertEq(registry.getVoterRegistrationData(2345).voterStreak, 0);
-assertTrue(registry.getVoterRegistrationData(2345).isRegistered);
-assertFalse(registry.getVoterRegistrationData(2345).isAccredited);
+assertEq(registry.getVoterDataViaNIN(2345).voterAddress, user1);
+assertEq(registry.getVoterDataViaNIN(2345).voterStreak, 0);
+assertTrue(registry.getVoterDataViaNIN(2345).isRegistered);
 
 // Edge case for when a valid citizen tries to register twice.
 vm.prank(user1);
@@ -144,15 +155,25 @@ function testChangeVoterAddress() public {
 
     // Edge case test for when a registration officer tries to change voter address to an already Authorized Address.
     vm.startPrank(user3);
-    vm.expectRevert(AddressAlreadyAuthorized.selector);
-    registry.changeVoterAddress(2345, user1);
+    vm.expectRevert(
+        abi.encodeWithSelector(
+            AddressAlreadyAuthorized.selector,
+            user2
+        )
+    );
+    registry.changeVoterAddress(2345, user2);
 
     // Edge case for when a zero address is passed into the change voter address function
     vm.expectRevert(ZeroAddressNotAllowed.selector);
     registry.changeVoterAddress(2345, zeroAddress);
 
     // Edge case for when a contract address is passed into the change voter address function
-    vm.expectRevert(ContractAddressNotAllowed.selector);
+    vm.expectRevert(
+        abi.encodeWithSelector(
+            ContractAddressNotAllowed.selector,
+            address(registry)
+        )
+    );
     registry.changeVoterAddress(2345, address(registry));
 
     // Edge case for when an invalid NIN is passed into the change voter address function
@@ -160,10 +181,12 @@ function testChangeVoterAddress() public {
     registry.changeVoterAddress(2346, user4);
 
     // Tests for when the changeVoterAddres function is correctly called
+    assertEq(registry.getValidNINHashForAddress(user1), ninHashes[0]);
     registry.changeVoterAddress(2345, user4);
-    assertEq(registry.getVoterRegistrationData(2345).voterAddress, user4);
+    assertEq(registry.getVoterDataViaNIN(2345).voterAddress, user4);
     assertTrue(registry.getValidityOfAddress(user4));
-    assertEq(registry.getValidAddressForNIN(2345), user4);
+    assertEq(registry.getValidNINHashForAddress(user1), 0x0000000000000000000000000000000000000000000000000000000000000000);
+    assertEq(registry.getValidNINHashForAddress(user4), ninHashes[0]);
     vm.stopPrank();
 }
 

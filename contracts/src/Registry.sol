@@ -7,19 +7,20 @@ contract Registry is AccessControl {
 
     // state variables
     bytes32 public constant REGISTRATION_OFFICER_ROLE = keccak256("REGISTRATION_OFFICER_ROLE");
+    // Grant Role to Elections contract in deployment script
+    bytes32 public constant ELECTIONS_CONTRACT_ROLE = keccak256("ELECTIONS_CONTRACT_ROLE");
     address public headOfRegistrations;
 
     mapping(bytes32 => bool) private isValidNIN;
     mapping(address => bool) private isValidAddress;
     mapping(bytes32 => string) private validNameForNIN;
-    mapping(bytes32 => address) private validAddressForNIN;
+    mapping(address => bytes32) private validNINForAddress;
 
     struct RegisteredVoter{
             string name;
             address voterAddress;
             uint voterStreak;
             bool isRegistered;
-            bool isAccredited;
     }
 
     mapping(bytes32 => RegisteredVoter) public registeredVoter;
@@ -28,13 +29,14 @@ contract Registry is AccessControl {
     event VoterAddressChanged(bytes32 ninHash, address indexed oldAddress, address indexed newAddress);
 
     error ArraysNotSameLength();
-    error NINAlreadyAuthorized();
-    error AddressAlreadyAuthorized();
+    error NINAlreadyAuthorized(bytes32 ninHash);
+    error AddressAlreadyAuthorized(address addr);
     error ZeroAddressNotAllowed();
-    error ContractAddressNotAllowed();
+    error NotARegisteredVoter();
+    error ContractAddressNotAllowed(address addr);
     error InvalidNIN();
-    error InvalidGovernmentRegisteredFirstName();
-    error AddressNotFoundInDataBase();
+    error InvalidGovernmentRegisteredFirstName(string governmentRegisteredFirstName, string inputedName);
+    error NINNotFoundInDataBase();
     error EmptyStringInputed();
     error CitizenCannotRegisterTwice();
 
@@ -51,14 +53,20 @@ contract Registry is AccessControl {
         }
         for(uint i = 0; i < _ninHashes.length; i++) {
             if(_addresses[i] == address(0)) revert ZeroAddressNotAllowed();
-            if(isValidNIN[_ninHashes[i]]) revert NINAlreadyAuthorized();
-            if(isValidAddress[_addresses[i]]) revert AddressAlreadyAuthorized();
-            if(_addresses[i].code.length > 0) revert ContractAddressNotAllowed();
+            if(isValidNIN[_ninHashes[i]]) revert NINAlreadyAuthorized(_ninHashes[i]);
+            if(isValidAddress[_addresses[i]]) revert AddressAlreadyAuthorized(_addresses[i]);
+            if(_addresses[i].code.length > 0) revert ContractAddressNotAllowed(_addresses[i]);
+
             isValidNIN[_ninHashes[i]] = true;
             isValidAddress[_addresses[i]] = true;
             validNameForNIN[_ninHashes[i]] = _names[i];
-            validAddressForNIN[_ninHashes[i]] = _addresses[i];
+            validNINForAddress[_addresses[i]] = _ninHashes[i];
         }
+    }
+
+    // Election contract should check if voter has successfully voted before calling this function
+    function incrementVoterStreak() external onlyRole(ELECTIONS_CONTRACT_ROLE){
+       registeredVoter[validNINForAddress[msg.sender]].voterStreak += 1;
     }
 
     // Internal helper functions
@@ -84,10 +92,10 @@ contract Registry is AccessControl {
         }
 
         if(getStringHash(validNameForNIN[ninHash]) != getStringHash(_name)){
-            revert InvalidGovernmentRegisteredFirstName();
+            revert InvalidGovernmentRegisteredFirstName(validNameForNIN[ninHash], _name);
         }
-        if(validAddressForNIN[ninHash] != msg.sender){
-            revert AddressNotFoundInDataBase();
+        if(validNINForAddress[msg.sender] != ninHash){
+            revert NINNotFoundInDataBase();
         }
 
         if(registeredVoter[ninHash].isRegistered){
@@ -98,12 +106,11 @@ contract Registry is AccessControl {
             name: _name,
             voterAddress: msg.sender,
             voterStreak: 0,
-            isRegistered: true,
-            isAccredited: false
+            isRegistered: true
         });
 
         registeredVoter[ninHash] = newVoter;
-        emit VoterRegisteredOnChain(ninHash,msg.sender, _name);
+        emit VoterRegisteredOnChain(ninHash, msg.sender, _name);
     }
 
     /* Use function in the case when a voter misplaces their private keys for oldAddress.
@@ -113,21 +120,27 @@ contract Registry is AccessControl {
     function changeVoterAddress(uint _nin, address _newAddress)external onlyRole(REGISTRATION_OFFICER_ROLE){
         bytes32 ninHash = getNumHash(_nin);
         
-        if(isValidAddress[_newAddress]) revert AddressAlreadyAuthorized();
+        if(isValidAddress[_newAddress]) revert AddressAlreadyAuthorized(_newAddress);
         if(_newAddress == address(0)) revert ZeroAddressNotAllowed();
-        if(_newAddress.code.length > 0) revert ContractAddressNotAllowed();
+        if(_newAddress.code.length > 0) revert ContractAddressNotAllowed(_newAddress);
         if(!isValidNIN[ninHash]) revert InvalidNIN();
     
         address compromisedAddress = registeredVoter[ninHash].voterAddress;
+        isValidAddress[compromisedAddress] = false;
+        delete validNINForAddress[compromisedAddress];
         registeredVoter[ninHash].voterAddress = _newAddress;
         isValidAddress[_newAddress] = true;
-        validAddressForNIN[ninHash] = _newAddress;
+        validNINForAddress[_newAddress] = ninHash;
         emit VoterAddressChanged(ninHash, compromisedAddress, _newAddress);
     }
 
     // View Functions
-    function getVoterRegistrationData(uint _nin) external view returns(RegisteredVoter memory){
+    function getVoterDataViaNIN(uint _nin) external view returns(RegisteredVoter memory){
             return registeredVoter[getNumHash(_nin)];
+    }
+
+    function getVoterDataViaAddress() external view returns(RegisteredVoter memory){
+        return registeredVoter[validNINForAddress[msg.sender]];
     }
 
     function getValidityOfNIN(uint _nin) external view returns(bool){
@@ -138,7 +151,7 @@ contract Registry is AccessControl {
         return isValidAddress[_address];
     }
 
-    function getValidAddressForNIN(uint _nin) external view returns(address){
-        return validAddressForNIN[getNumHash(_nin)];
+    function getValidNINHashForAddress(address _address) external view returns(bytes32){
+        return validNINForAddress[_address];
     }
 }
