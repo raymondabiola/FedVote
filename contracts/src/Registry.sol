@@ -139,8 +139,8 @@ contract Registry is AccessControl {
             return registeredVoter[getNumHash(_nin)];
     }
 
-    function getVoterDataViaAddress() external view returns(RegisteredVoter memory){
-        return registeredVoter[validNINForAddress[msg.sender]];
+    function getVoterDataViaAddress(address _address) external view returns(RegisteredVoter memory){
+        return registeredVoter[validNINForAddress[_address]];
     }
 
     function getValidityOfNIN(uint _nin) external view returns(bool){
