@@ -3,7 +3,7 @@ pragma solidity ^0.8.30;
 
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
-// INTERFACES (Aligned with Raymond's Code)
+// INTERFACES
 
 interface IRegistry {
     struct RegisteredVoter {
@@ -118,8 +118,8 @@ contract Election is AccessControl {
     function accreditMyself() external {
         // 1. Check if Election is Active
         // We use currentElectionId to determine which election they are trying to accredit for.
-        require(electionDetails[currentElectionId].isActive, "No active election");
         require(!electionDetails[currentElectionId].isEnded, "Election ended");
+        require(electionDetails[currentElectionId].isActive, "No active election");
 
         // 2. Get NIN from Address
         bytes32 ninHash = registry.getValidNINHashForAddress(msg.sender);
@@ -213,7 +213,7 @@ contract Election is AccessControl {
         if (lastElectionVoted != 0 && _electionId > (lastElectionVoted + 1)) {
             
             // RESET STREAK
-            // We set it to 1, because this current vote counts as the start of a new streak
+            // It will beset to 1, because this current vote counts as the start of a new streak
             try registry.setVoterStreak(_voter, 1) {
                 emit StreakReset(_voter);
             } catch {
@@ -222,6 +222,7 @@ contract Election is AccessControl {
 
         } else {
             // CONTINUE STREAK
+
             try registry.incrementVoterStreak(_voter) {
                 
                 // Check for Badge Threshold (Current + 1 = Threshold)
