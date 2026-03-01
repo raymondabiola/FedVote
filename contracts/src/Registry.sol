@@ -65,8 +65,12 @@ contract Registry is AccessControl {
     }
 
     // Election contract should check if voter has successfully voted before calling this function
-    function incrementVoterStreak() external onlyRole(ELECTIONS_CONTRACT_ROLE){
-       registeredVoter[validNINForAddress[msg.sender]].voterStreak += 1;
+    function incrementVoterStreak(address _address) public onlyRole(ELECTIONS_CONTRACT_ROLE){
+       registeredVoter[validNINForAddress[_address]].voterStreak += 1;
+    }
+
+    function resetVoterStreak(address _address) public onlyRole(ELECTIONS_CONTRACT_ROLE){
+       registeredVoter[validNINForAddress[_address]].voterStreak = 0;
     }
 
     // Internal helper functions
