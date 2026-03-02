@@ -9,12 +9,16 @@ contract Registry is AccessControl {
     bytes32 public constant REGISTRATION_OFFICER_ROLE = keccak256("REGISTRATION_OFFICER_ROLE");
     // Grant Role to Elections contract in deployment script
     bytes32 public constant ELECTIONS_CONTRACT_ROLE = keccak256("ELECTIONS_CONTRACT_ROLE");
+    bytes32 public constant PARTY_CONTRACT_ROLE = keccak256("PARTY_CONTRACT_ROLE");
+    
     address public headOfRegistrations;
 
     mapping(bytes32 => bool) private isValidNIN;
     mapping(address => bool) private isValidAddress;
     mapping(bytes32 => string) private validNameForNIN;
     mapping(address => bytes32) private validNINForAddress;
+
+    mapping(bytes32 => bool) private isMemberOfAParty;
 
     struct RegisteredVoter{
             string name;
@@ -35,6 +39,7 @@ contract Registry is AccessControl {
     error NotARegisteredVoter();
     error ContractAddressNotAllowed(address addr);
     error InvalidNIN();
+    error AlreadyAPartyMember();
     error InvalidGovernmentRegisteredFirstName(string governmentRegisteredFirstName, string inputedName);
     error NINNotFoundInDataBase();
     error EmptyStringInputed();
@@ -71,6 +76,20 @@ contract Registry is AccessControl {
 
     function resetVoterStreak(address _address) public onlyRole(ELECTIONS_CONTRACT_ROLE){
        registeredVoter[validNINForAddress[_address]].voterStreak = 0;
+    }
+    
+    // Use this to check if a valid citizen does not belong to any party before they can be registered
+    // Prevents citizens from registering for two political parties.
+    function setCitizenPartyMembershipStatusAsTrue(uint _nin) public onlyRole(PARTY_CONTRACT_ROLE){
+        if(!isValidNIN[getNumHash(_nin)]) revert InvalidNIN();
+        if(isMemberOfAParty[getNumHash(_nin)]) revert AlreadyAPartyMember();
+        isMemberOfAParty[getNumHash(_nin)] = true;
+    }
+
+    // Use this when a party member needs to decamp from a party so they can register for another party
+    function setCitizenPartyMembershipStatusAsFalse(uint _nin) public onlyRole(PARTY_CONTRACT_ROLE){
+        isMemberOfAParty[getNumHash(_nin)] = false;
+
     }
 
     // Internal helper functions
@@ -157,5 +176,9 @@ contract Registry is AccessControl {
 
     function getValidNINHashForAddress(address _address) external view returns(bytes32){
         return validNINForAddress[_address];
+    }
+
+    function checkIfCitizenIsPartyMember(uint _nin) external view returns(bool){
+        return isMemberOfAParty[getNumHash(_nin)];
     }
 }
