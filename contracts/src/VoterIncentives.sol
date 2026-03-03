@@ -1,43 +1,51 @@
 // SPDX-License-Identifier: MIT
-pragma solidity  ^0.8.30;
+pragma solidity ^0.8.30;
 import {DemocracyBadge} from "src/DemocracyBadge.sol";
 import {NationalToken} from "src/NationalToken.sol";
 import {Registry} from "src/Registry.sol";
 
-
 contract VoterIncentives {
-
     DemocracyBadge public democracyBadge;
 
     NationalToken public nationalToken;
 
     Registry public registry;
 
-    mapping(address => bool) public hasClaimedIncentive;
+    error Invalid_Address();
+    error No_VoterStreak();
+    error Not_Eligible_Yet();
+    error Already_Claim_Streak();
+    error Dont_Have_DemocracyBadge();
 
-    uint voterStreak = registry.getVoterDataViaAddress(msg.sender).voterStreak;
+    mapping(address => mapping(uint => bool)) public hasClaimedIncentive;
 
-    // uint resetStreak = registry.resetVoterStreak(msg.sender);
+    function claimIncentives() external {
+        uint voterStreak = registry
+            .getVoterDataViaAddress(msg.sender)
+            .voterStreak;
 
-    function checkEligibility() external {
-        require(msg.sender != address(0), "Invalid Address");
-
-        require(voterStreak % 3 == 0, "Doesnt meet the requirement to get incentiviced");
-
-        require(!hasClaimedIncentive[msg.sender], "You cant claim multiple times for same amount of voting streak" );
-
-        hasClaimedIncentive[msg.sender] = false;
-
-        if(democracyBadge.balanceOf(msg.sender) == 0){
-            revert("You do not have the DemocracyBadge");
+        if (msg.sender == address(0)) {
+            revert(Invalid_Address());
         }
+
+        if (voterStreak < 1) {
+            revert(No_VoterStreak());
+        }
+
+        if (voterStreak % 3 != 0) {
+            revert(Not_Eligible_Yet());
+        }
+
+        if (hasClaimedIncentive[msg.sender][voterStreak]) {
+            revert(Already_Claim_Streak());
+        }
+
+        if (democracyBadge.balanceOf(msg.sender) == 0) {
+            revert(Dont_Have_DemocracyBadge());
+        }
+
+        hasClaimedIncentive[msg.sender][voterStreak] = true;
+
+        nationalToken.mint(msg.sender, 100);
     }
-
-    function claimIncentive(address _patriotNFT, uint amont) public {
-
-        nationalToken.mint(msg.sender, amount);
-
-        hasClaimedIncentive[msg.sender] = true;
-    }
-
 }
