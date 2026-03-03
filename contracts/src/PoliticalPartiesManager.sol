@@ -5,50 +5,75 @@ import "./NationalToken.sol";
 import "./NationalElectionBody.sol";
 import "./Registry.sol";
 
+contract PoliticalPartiesManagerFactory {
+    PoliticalPartiesManager[] public politicalpartymanager;
+    address[] addressPoliticalPartyManager;
+
+    function createNewPoliticalParty(
+        string memory _partyName,
+        address _tokenAddress,
+        address _electionBodyAddress,
+        address _registryAddress
+    ) external {
+        PoliticalPartiesManager politicalparty = new PoliticalPartiesManager(
+            msg.sender, _partyName, _tokenAddress, _electionBodyAddress, _registryAddress
+        );
+        politicalpartymanager.push(politicalparty);
+
+        addressPoliticalPartyManager.push(address(politicalparty));
+    }
+
+    function getAllPoliticalParty() external view returns (address[] memory) {
+        return addressPoliticalPartyManager;
+    }
+}
+
 contract PoliticalPartiesManager {
+    // token used to pay for candidacy
+    NationalToken public nationalToken;
+    Registry public registry;
 
-// token used to pay for candidacy
-NationalToken public nationalToken;
-Registry public registry;
+    // map the chairman to party
+    string public partyName;
+    address public chairman;
+    uint256 public electionId;
+    uint256 public candidacyFee;
+    uint256 public membershipFee;
+    uint8 public candidateId;
+    uint8 public memberId;
+    uint256 public lastWinnerId;
 
-  // map the chairman to party 
-  string public partyName;
-  address public chairman;
-  uint public electionId;
-  uint public candidacyFee;
-  uint public membershipFee;
-  uint8 public candidateId;
-  uint8 public memberId;
-  uint public lastWinnerId; 
+    // reference to the election body contract
+    NationalElectionBody public electionBody;
 
-  // reference to the election body contract
-  NationalElectionBody public electionBody;
-
- 
-
-
-      constructor(string memory _partyName, address _tokenAddress, address _electionBodyAddress, address _registryAddress) {
-        chairman = msg.sender;
+    constructor(
+        address _owner,
+        string memory _partyName,
+        address _tokenAddress,
+        address _electionBodyAddress,
+        address _registryAddress
+    ) {
+        chairman = _owner;
         partyName = _partyName;
         nationalToken = NationalToken(_tokenAddress);
         electionBody = NationalElectionBody(_electionBodyAddress);
-        registry = Registry(_registryAddress)
-      }   
+        registry = Registry(_registryAddress);
+    }
 
-        modifier onlyChairman{
-            require(chairman == msg.sender , "Must be chairman");
-            _;
-        }
+    modifier onlyChairman() {
+        require(chairman == msg.sender, "Must be chairman");
+        _;
+    }
 
-        modifier onlyMember{
-           require(members[msg.sender].isMember, "Not authorized member");
-           _; 
-        }
+    modifier onlyMember() {
+        require(members[msg.sender].isMember, "Not authorized member");
+        _;
+    }
 
-        // bytes32 public constant MEMBER_ROLE = keccak256("MEMBER_ROLE");
-    
+    // bytes32 public constant MEMBER_ROLE = keccak256("MEMBER_ROLE");
+
     struct Member {
-        uint id;
+        uint256 id;
         string name;
         string party;
         address walletAddress;
@@ -58,40 +83,41 @@ Registry public registry;
     }
 
     struct Candidate {
-        uint id;
+        uint256 id;
         string name;
         string party;
-        uint voteCount;
+        uint256 voteCount;
         bool isRegistered;
         address walletAddress;
     }
 
     struct ElectionDetails {
-        uint   id;
+        uint256 id;
         string partyName;
-        uint startTime;
-        uint endTIme;
+        uint256 startTime;
+        uint256 endTIme;
         bool isActive;
         bool isEnded;
     }
 
-
-    mapping(uint => Candidate) public candidates;
+    mapping(uint256 => Candidate) public candidates;
     mapping(address => Member) public members;
-    mapping(uint => ElectionDetails) public elections;
+    mapping(uint256 => ElectionDetails) public elections;
     mapping(bytes32 => bool) private memberExists;
-    mapping(address => bool) public hasPaidForCandidacy; 
-    
+    mapping(address => bool) public hasPaidForCandidacy;
+
+    address[] public memberAddresses;
+
     event DeclareWinner(electionId, winner, isTie, highestVoteCount);
-    event MemberRemoved(memberAddress) // check how to use event again
+    event MemberRemoved(memberAddress); // check how to use event again
 
     error NotYourParty();
     error InvalidCandidateID();
     error AlreadyVoted();
     error InvalidAmount();
     error InsufficientBalance();
-    error MustBeAnEOA(); 
-    error NotPaidForCandidacy(); 
+    error MustBeAnEOA();
+    error NotPaidForCandidacy();
     error CandidateAlreadyExists();
     error NotPaidForMembership();
     error AlreadyPaidForCandidacy();
@@ -102,110 +128,119 @@ Registry public registry;
     error NotAuthorizedCitizen();
     error MustBeAMember();
 
-    function setCandidacyFee(uint _candidacyFee) external onlyChairman {
-        if (_candidacyFee == 0)
+    function setCandidacyFee(uint256 _candidacyFee) external onlyChairman {
+        if (_candidacyFee == 0) {
             revert InvalidAmount();
+        }
 
         candidacyFee = _candidacyFee;
     }
 
     function payForCandidateship() external onlyMember {
-        uint _fee = candidacyFee;   
+        uint256 _fee = candidacyFee;
 
-        if (hasPaidForCandidacy[msg.sender])
-            revert AlreadyPaidForCandidacy(); 
+        if (hasPaidForCandidacy[msg.sender]) {
+            revert AlreadyPaidForCandidacy();
+        }
 
-        if (_fee == 0) 
+        if (_fee == 0) {
             revert InvalidAmount();
+        }
 
-        if(msg.sender.code.length > 0) 
-            revert MustBeAnEOA(); 
+        if (msg.sender.code.length > 0) {
+            revert MustBeAnEOA();
+        }
 
-        if (nationalToken.balanceOf(msg.sender) < _fee )
+        if (nationalToken.balanceOf(msg.sender) < _fee) {
             revert InsufficientBalance();
+        }
 
         nationalToken.transferFrom(msg.sender, address(this), _fee);
 
         hasPaidForCandidacy[msg.sender] = true;
     }
 
-    function setElectionId(uint _electionId) external onlyRole(DEFAULT_ADMIN_ROLE){ // Implement library
-        if (_electionId == 0 )
+    function setElectionId(uint256 _electionId) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        // Implement library
+        if (_electionId == 0) {
             revert UseValueGreaterThanZero();
+        }
 
         electionId = _electionId;
     }
 
     function registerCandidate(string memory _name) external onlyMember {
-
-        if (!members[msg.sender].isMember)
+        if (!members[msg.sender].isMember) {
             revert MustBeAMember();
+        }
 
-        if (!hasPaidForCandidacy[msg.sender])
-            revert NotPaidForCandidacy();   
+        if (!hasPaidForCandidacy[msg.sender]) {
+            revert NotPaidForCandidacy();
+        }
 
         candidateId += 1;
-     
-        candidates[candidateId] = Candidate ({
-            id: electionId,
-            name: _name,
-            party: partyName,
-            voteCount: 0,
-            isRegistered: true,
-            walletAddress: msg.sender
-        });
 
+        candidates[candidateId] = Candidate({
+            id: electionId, name: _name, party: partyName, voteCount: 0, isRegistered: true, walletAddress: msg.sender
+        });
     }
 
-    function removeCandidate(uint _candidateId, address _walletAddress) external onlyChairman {
+    function removeCandidate(uint256 _candidateId, address _walletAddress) external onlyChairman {
         Candidate storage candidate = candidates[_candidateId];
 
-        if (!candidate.isRegistered)
+        if (!candidate.isRegistered) {
             revert CandidateNotRegistered();
+        }
 
         delete candidates[_candidateId];
 
         hasPaidForCandidacy[_walletAddress] = false;
-
     }
 
-    function payForMembership(uint _nin) external { 
-       if (registry.checkIfCitizenIsPartyMember(_nin))
+    function payForMembership(uint256 _nin) external {
+        if (registry.checkIfCitizenIsPartyMember(_nin)) {
             revert AlreadyMember();
+        }
 
-       if(!registry.getValidityOfAddress(msg.sender))
+        if (!registry.getValidityOfAddress(msg.sender)) {
             revert NotAuthorizedCitizen();
+        }
 
-       uint _fee = membershipFee;   
+        uint256 _fee = membershipFee;
 
-        if (members[msg.sender].hasPaidForMembership)
+        if (members[msg.sender].hasPaidForMembership) {
             revert AlreadyPaidForMembership();
+        }
 
-        if (_fee == 0)
+        if (_fee == 0) {
             revert InvalidAmount();
+        }
 
-        if(msg.sender.code.length > 0) 
-            revert MustBeAnEOA(); 
+        if (msg.sender.code.length > 0) {
+            revert MustBeAnEOA();
+        }
 
-        if (nationalToken.balanceOf(msg.sender) < _fee )
+        if (nationalToken.balanceOf(msg.sender) < _fee) {
             revert InsufficientBalance();
+        }
 
         nationalToken.transferFrom(msg.sender, address(this), _fee);
 
         members[msg.sender].hasPaidForMembership = true;
     }
 
-    function registerMember(string memory _name, uint _nin) external {
-
-        if (members[msg.sender].hasPaidForMembership)
+    function registerMember(string memory _name, uint256 _nin) external {
+        if (members[msg.sender].hasPaidForMembership) {
             revert NotPaidForMembership();
+        }
 
-        if (members[msg.sender].isMember)
+        if (members[msg.sender].isMember) {
             revert AlreadyMember();
-        
+        }
+
         memberId++;
 
-        members[msg.sender] = Member ({
+        members[msg.sender] = Member({
             id: memberId,
             name: _name,
             party: partyName,
@@ -215,106 +250,122 @@ Registry public registry;
             isMember: true
         });
 
+        memberAddresses.push(msg.sender);
+
         register.setCitizenPartyMembershipStatusAsTrue(_nin);
-    
     }
 
-    function removeMember(address _memberAddress, uint _nin) external onlyChairman {
+    function removeMember(address _memberAddress, uint256 _nin) external onlyChairman {
         Member storage member = members[_memberAddress];
 
-        if (!member.isMember)
+        if (!member.isMember) {
             revert MustBeAMember();
+        }
 
-            delete members[_memberAddress];
+        delete members[_memberAddress];
+        
+        for (uint i = 0; i < memberAddresses.length; i++) {
+            if (memberAddresses[i] == _memberAddress) {
+                memberAddresses[i] = memberAddresses[memberAddresses.length- 1];
 
-            register.setCitizenPartyMembershipStatusAsFalse(_nin);
+                memberAddresses.pop();
+            }
+        }
 
-            emit MemberRemoved(_memberAddress)
+        register.setCitizenPartyMembershipStatusAsFalse(_nin);
+
+        emit MemberRemoved(_memberAddress);
     }
 
-    function createElection(uint _durationInHours) external onlyChairman {
-        elections[electionId] = ElectionDetails ({
-            id:        electionId,
-            name:      partyName,
+    function createElection(uint256 _durationInHours) external onlyChairman {
+        elections[electionId] = ElectionDetails({
+            id: electionId,
+            name: partyName,
             startTime: block.timestamp,
-            endTIme:   block.timestamp + (_durationInHours * 1 hours),  
-            isActive:  true,
-            isEnded:   false
+            endTIme: block.timestamp + (_durationInHours * 1 hours),
+            isActive: true,
+            isEnded: false
         });
     }
 
-
-    function voteforPrimaryElection(uint _candidateId, uint _electionID) external onlyMember {
+    function voteforPrimaryElection(uint256 _candidateId, uint256 _electionID) external onlyMember {
         Member storage voter = members[msg.sender];
         Candidate storage candidate = candidates[_candidateId];
 
-        if (block.timestamp > elections[electionId].endTIme || !elections[electionId].isActive)
+        if (block.timestamp > elections[electionId].endTIme || !elections[electionId].isActive) {
             revert ElectionEnded();
-
-        if (_electionID != candidate.id)
-            revert InvalidElectionId();
-
-        if(_candidateId == 0 || _candidateId > candidateId)
-            revert InvalidCandidateID();
-
-        if(voter.hasVoted) 
-            revert AlreadyVoted();       
-        
-            candidate.voteCount++;
-            voter.hasVoted = true;
-    }
-     
-    function declareWinner(uint _electionId)
-    external
-    onlyChairman
-    returns (Candidate memory)
-{
-    ElectionDetails storage election = elections[_electionId];
-
-    if (block.timestamp < election.endTIme || !election.isActive)
-        revert ElectionEnded();
-
-    uint highestVotes = 0;
-    uint winnerId = 0;
-    bool isTie = false;
-    lastWinnerId = winnerId;
-
-    for (uint i = 1; i <= candidateId; i++) {
-        if (!candidates[i].isRegistered) continue;
-
-        if (candidates[i].voteCount > highestVotes) {
-            highestVotes = candidates[i].voteCount;
-            winnerId = i;
-            isTie = false;
-        } else if (candidates[i].voteCount == highestVotes) {
-            isTie = true;
         }
+
+        if (_electionID != candidate.id) {
+            revert InvalidElectionId();
+        }
+
+        if (_candidateId == 0 || _candidateId > candidateId) {
+            revert InvalidCandidateID();
+        }
+
+        if (voter.hasVoted) {
+            revert AlreadyVoted();
+        }
+
+        candidate.voteCount++;
+        voter.hasVoted = true;
     }
 
+    function declareWinner(uint256 _electionId) external onlyChairman returns (Candidate memory) {
+        ElectionDetails storage election = elections[_electionId];
 
+        if (block.timestamp < election.endTIme || !election.isActive) {
+            revert ElectionEnded();
+        }
 
-    emit DeclareWinner(_electionId, winnerId, isTie, highestVotes);
+        uint256 highestVotes = 0;
+        uint256 winnerId = 0;
+        bool isTie = false;
+        lastWinnerId = winnerId;
 
-    return candidates[winnerId];
-}   
+        for (uint256 i = 1; i <= candidateId; i++) {
+            if (!candidates[i].isRegistered) continue;
 
-    function registerWinnerWithElectionBody(uint _electionId) external onlyChairman {
-    Candidate storage winner = candidates[lastWinnerId];
+            if (candidates[i].voteCount > highestVotes) {
+                highestVotes = candidates[i].voteCount;
+                winnerId = i;
+                isTie = false;
+            } else if (candidates[i].voteCount == highestVotes) {
+                isTie = true;
+            }
+        }
 
-    electionBody.setCandidate(
-        _electionId,
-        winner.name,
-        winner.party,
-        winner.walletAddress
-    );
-}
+        emit DeclareWinner(_electionId, winnerId, isTie, highestVotes);
 
-    // change wallet address for member and candidate 
-    // function ChangeWalletAddress() external onlyChairman{
-    //     Candidate storage candidate = can
-    // } 
+        return candidates[winnerId];
+    }
+
+    function registerWinnerWithElectionBody(uint256 _electionId) external onlyChairman {
+        Candidate storage winner = candidates[lastWinnerId];
+
+        electionBody.setCandidate(_electionId, winner.name, winner.party, winner.walletAddress);
+    }
+
     
-    // get members and candidate functions
+    // function ChangeWalletAddress() external onlyChairman{
+
+    // }
+
+    function getAllPartyMembers() external view returns (Member[] memory) {
+        uint length = memberAddresses.length;
+        Member[] memory partyMembers = new Member[](length);
+        for (uint i = 0; i < length; i++ ){
+            partyMembers[i] = members[memberAddresses[i]];
+        }
+        return partyMembers;
+    }
+
+    // function getAllPartyCandidates() external returns (Candidate memory) {
+    //     for (uint i = 1; i <= candidateId; i++) {
+    //         if (candidates[i].isRegistered) {
+    //             return candidates[i];
+    //         }
+    //     }
+    // }
 }
-
-
