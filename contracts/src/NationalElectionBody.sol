@@ -4,24 +4,25 @@ pragma solidity  ^0.8.30;
 import {NationalToken} from "./NationalElectionBody";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
-interface IElections {
-    uint256 public currentElectionId;
-}
+// interface IElections {
+//     uint256 public currentElectionId;
+// }
 
 contract NationalElectionBody {
-    uint256 private constant APC_PARTY_ID = 1;
-    uint256 private constant PDP_PARTY_ID = 2;
-    uint256 private constant LABOUR_PARTY_ID = 3;
-    uint256 private ELECTION_ID;
+    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
 
-
-    IElections public election;
     NationalToken public nationalToken;
+
+    // error InsufficientBalance(uint256 available, uint256 required);
+    // error NotAuthorized(address caller);
+    error InvalidPartyId(uint256 providedId, uint256 maxId);
+    error PartyNotRegistered(Status status)
+    error PartyAlreadyRegistered(Status status)
+    // error PartyAlreadyRegistered(string name);
+    // error ElectionNotActive();
     
     uint256 RegistrationFee = 10000e18;
-
-    mapping(string => string) partyChiarman;
-    mapping(address => mapping(uint256 => address)) candidate;
+    uint256 PartyCount;
 
     enum Status {
         pending,
@@ -45,49 +46,76 @@ contract NationalElectionBody {
         uint256 id;
         string partyName;
         address partyAddress;
-        
-        //mapping(uint256 => Can partyrcandidate;
+        mapping(uint256 => CandidateStruct) partyrcandidate;
         string partyAcronym;
         string partyChiarman;
         Status status;
-        //string constitutionIPFSHash;
-        //string manifestoIPFSHash;
     }
-    mapping (uint256 => mapping(uint256 => CandidateStruct)) candidate;
-
+    
     Party[] public parties;
+    mapping (uint256 => mapping(uint256 => CandidateStruct[])) candidate;
+    mapping (string => uint256) partyNameToId;
+    //mapping(string => string) partyChiarman;
+    //mapping(address => mapping(uint256 => address)) candidate;
+
+
 
     address tokenAddress;
 
-    event PaymentSuccessful (address indexed _student, uint256 _amount);
+    event PartyRegistered(uint256 indexed partyId, string name, address partyAddress);
+    // event PaymentSuccessful (address indexed _student, uint256 _amount);
     
     constructor(address _address) {
         tokenAddress = _address;
         nationalTtoken = NationalToken(tokenAddress);
-        election = IElections(_electionAddress);
+
+        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(ADMIN_ROLE, msg.sender);
+
+        //election = IElections(_electionAddress);
     }
-    function RegisterParty(string memory partyName, string memory chairman, string memory partyAcronym, address _address ) public {
-        PartyId ++;
+    function RegisterParty(string memory _partyName, string memory _chairman, string memory _partyAcronym, address _address ) extanal {
+        PartyCount++
         Party memory party = Party({
-            id: PartyId,
-            partyName: partyName,
+            id: PartyCounter,
+            partyName: _partyName,
             partyAddress: _address,
             partyChiarman: chairman,
             partyAcronym: partyAcronym,
             status: Status.pending
         });
         nationalToken.transferFrom(_address, address(this), RegistrationFee);
-        Party storage party = parties[parties.length -1];
-        party.status = Status.approved;
 
         parties.push(party);
-        emit PaymentSuccessful (_address, RegistrationFee);
+        partyNameToId[partyName] = PartyCount;
+
+        emit PaymentSuccessful (PartyCount, _partyName, _address);
     }
+
+    function ApproveParty(uint256 _partyId) external onlyRole(ADMIN_ROLE) {
+        if (_partyId > PartyCount) {
+            revert InvalidPartyId(_partyId, PartyCount);
+        }
+        if (_partyIdy == 0) {
+            revert InvalidPartyId(_partyId, PartyCount);
+        }
+        
+        Party storage party = parties[parties.length -1];
+
+        if (party.status == Status.approved) {
+            revert PartyAlreadyRegistered(party.status);
+        }
+        if (party.status == Status.rejected) {
+            revert PartyNotRegistered(party.status);
+        }
+        
+        party.status = Status.approved;
+
     /*CandidateStruct calldata candidate, */
     function addCandidateForNationaElection(uint256 _candidateId, string _candidateName, address _address) external {
         //candidates
+        
         election_id = election.currentElectionId;
-
         CandidateStruct memory candidates = CandidateStruct({
             ElectionId: election_id,
             PartyId: _party,
