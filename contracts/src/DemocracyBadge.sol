@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 contract DemocracyBadge is ERC721, AccessControl{
-uint tokenId_;
+uint public tokenId_;
 /* assign role to Elections contract. If a voter votes in an election and their voter streak gets
   to the threshold, then the Elections contract will call the mintDemocracyBadge function to voter address*/
 bytes32 public constant ELECTIONS_CONTRACT_ROLE = keccak256("ELECTIONS_CONTRACT_ROLE");
@@ -40,12 +40,12 @@ function setApprovalForAll(address, bool) public pure override {
     revert SoulBoundToken();
 }
 
-function tokenURI(uint256) public view virtual override returns (string memory){
+function tokenURI(uint256 tokenId) public view virtual override returns (string memory){
+    _requireOwned(tokenId);
     return "ipfs://bafkreidbix2i3gnhujrmxccprz4bqjbhuy24rfhzdawdfihtni5tg5b3ba";
 }
 
 function supportsInterface(bytes4 interfaceId) public view virtual override(ERC721, AccessControl) returns (bool){
     return super.supportsInterface(interfaceId);
 }
-
 }
