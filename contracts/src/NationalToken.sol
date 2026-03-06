@@ -12,7 +12,7 @@ contract NationalToken is ERC20, AccessControl {
 
     bytes32 public constant MINTERS_ROLE = keccak256("MINTERS_ROLE");
 
-    constructor(address _centralBank) ERC20("NationalToken", "NAT") {
+    constructor(address _centralBank) ERC20("NationalToken", "NAT"){
 
         centralBank = _centralBank;
 
