@@ -1,24 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity  ^0.8.30;
 
-import {NationalToken} from "./NationalElectionBody";
+import {NationalToken} from "./NationalToken.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
 contract NationalElectionBody is AccessControl {
-    
-    function registerParty(string memory _name, string memory _acronym, string memory _chairman, address _partyAddress) external;
-    function approveParty(uint256 _partyId) external;
-    function addCandidate(uint256 _partyId, string memory _candidateName, address _candidateAddress) external;
-    function getNextElectionId() external view returns (uint256);
-    function isPartyRegistered(string memory _partyName) external view returns (bool);
-    function getPartyCandidate(uint256 _partyId) external view returns (Candidate memory);
-    function getPartyCount() external view returns (uint256);
-    function getCandidateCount() external view returns (uint256);
-
-
     NationalToken public nationalToken;
     
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
+    bytes32 public constant PARTY_CHAIRMAN_ROLE = keccak256("PARTY_CHAIRMAN_ROLE");
 
     uint256 RegistrationFee = 10000e18;
     uint256 public ElectionId;
@@ -48,8 +37,8 @@ contract NationalElectionBody is AccessControl {
     }
     
     Party[] public parties;
-    mapping(uint256 => Candidate) public partyCandidate;
-    mapping (string => uint256) partyNameToId;
+    mapping(uint256 => CandidateStruct) public partyCandidate;
+    mapping (string => uint256) public partyNameToId;
 
     uint256 PartyCount;
     uint256 CandidateCount;
@@ -68,6 +57,11 @@ contract NationalElectionBody is AccessControl {
         _grantRole(PARTY_CHAIRMAN_ROLE, msg.sender);
         nextElectionId = 1;
     }
+
+    function grantChairmanRole(address _chairman) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        _grantRole(PARTY_CHAIRMAN_ROLE, _chairman);
+    }
+
     function RegisterParty(string memory _partyName, string memory _chairman, string memory _partyAcronym, address _address) external {
         PartyCount++;
         Party memory party = Party({
@@ -86,7 +80,7 @@ contract NationalElectionBody is AccessControl {
         emit PartyRegistered(PartyCount, _partyName, _address);
     }
 
-    function ApproveParty(uint256 _partyId) external onlyRole(PARTY_CHAIRMAN_ROLE) {
+    function approveParty(uint256 _partyId) external onlyRole(PARTY_CHAIRMAN_ROLE) {
         if (_partyId > PartyCount) {
             revert InvalidPartyId(_partyId, PartyCount);
         }
@@ -126,19 +120,19 @@ contract NationalElectionBody is AccessControl {
         CandidateCount++;
         uint256 newCandidateCount = CandidateCount;
 
-        candidate[_partyId].push(CandidateStruct({
+        partyCandidate[_partyId] = CandidateStruct({
             PartyId: _partyId,
             CandidateId: newCandidateCount,
             Name: _candidateName,
             Address: _address,
             Id: newCandidateCount
-        }));
+        });
 
-        emit CandidateAdded(_partyId, _candidateName, _address, _address );
+        emit CandidateAdded(newCandidateCount, _partyId, _candidateName, _address);
     
     }
 
-    function getNextElectionId() external view returns (uint256){
+    function getNextElectionId() external returns (uint256){
         ElectionId++;
         nextElectionId = ElectionId;
         return nextElectionId;
@@ -159,16 +153,21 @@ contract NationalElectionBody is AccessControl {
     }
 
     function getPartyCandidate(string memory _party) external view returns (CandidateStruct memory) {
-        CandidateStruct memory candidate = partyCandidate[_partyId];
-        require(candidate.id != 0, "No candidate for this party");
+        uint256 partyId = partyNameToId[_party];
+        CandidateStruct memory candidate = partyCandidate[partyId];
+        require(candidate.Id != 0, "No candidate for this party");
         return candidate;
     }
 
     function getPartyCount() external view returns (uint256) {
-        return partyCounter;
+        return PartyCount;
     }
 
     function getCandidateCount() external view returns (uint256) {
-        return candidateCounter;
+        return CandidateCount;
+    }
+
+    function changeRegistrationFee(uint256 _newRegistrationFee) external {
+        RegistrationFee = _newRegistrationFee;
     }
 }
