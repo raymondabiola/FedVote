@@ -10,7 +10,9 @@ contract NationalElectionBodyTest is Test {
      NationalToken public token;
 
     address public admin = makeAddr("admin");
-    address public partyAddress = makeAddr("partyAddress");
+    address public partyAddress1 = makeAddr("firstPartyAddress");
+    address public partyAddress2 = makeAddr("secondPartyAddress");
+    address public partyAddress3 = makeAddr("thirdPartyAddress");
     address public partyChairman = makeAddr("partyChairman");
     address centralBank = makeAddr("centralBank");
 
@@ -20,7 +22,9 @@ contract NationalElectionBodyTest is Test {
         // centralBank deploys token
         vm.startPrank(centralBank);
         token = new NationalToken(centralBank);
-        token.mint(partyAddress, REGISTRATION_FEE);
+        token.mint(partyAddress1, REGISTRATION_FEE);
+        token.mint(partyAddress2, REGISTRATION_FEE);
+        token.mint(partyAddress3, REGISTRATION_FEE);
         vm.stopPrank();
 
         
@@ -29,7 +33,13 @@ contract NationalElectionBodyTest is Test {
         electionBody.grantChairmanRole(partyChairman);
         vm.stopPrank();
 
-        vm.prank(partyAddress);
+        vm.prank(partyAddress1);
+        token.approve(address(electionBody), type(uint256).max);
+
+        vm.prank(partyAddress2);
+        token.approve(address(electionBody), type(uint256).max);
+
+        vm.prank(partyAddress3);
         token.approve(address(electionBody), type(uint256).max);
     }
 
@@ -41,5 +51,17 @@ contract NationalElectionBodyTest is Test {
 
     function test_deployment() public {
         assertEq(address(electionBody.nationalToken()), address(token));
+    }
+
+    function
+    function test_PartyIdsAreCorrect() public {
+       uint256 partyId1 = _registerParty("Peoples Democratic Party", "PDP", "Dr. Kabiru Tanimu Turaki", partyAddress1);
+       uint256 partyId2 = _registerParty("APC",    "APC", "Jane", partyAddress2);
+       uint256 partyId3 = _registerParty("PDP",    "PDP", "Bob",  partyAddress3);
+
+       assertEq(partyId1, 1);
+       assertEq(partyId2, 2);
+       assertEq(partyId3, 3);
+       assertEq(electionBody.getPartyCount(), 3);
     }
 }

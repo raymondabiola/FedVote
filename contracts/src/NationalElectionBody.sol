@@ -62,7 +62,7 @@ contract NationalElectionBody is AccessControl {
         _grantRole(PARTY_CHAIRMAN_ROLE, _chairman);
     }
 
-    function RegisterParty(string memory _partyName, string memory _chairman, string memory _partyAcronym, address _address) external {
+    function RegisterParty(string memory _partyName, string memory _partyAcronym, string memory _chairman, address _address) external {
         PartyCount++;
         Party memory party = Party({
             id: PartyCount,
