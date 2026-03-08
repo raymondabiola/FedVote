@@ -27,6 +27,7 @@ contract NationalElectionBodyTest is Test {
     address public apcAddress = makeAddr("thirdPartyAddress");
     address public emptyAddress = makeAddr("emptyPartyAddress");
     address public apgaAddress = makeAddr("apgaAddress");
+    address public candidateAddress = makeAddr("candidateAddress");
     address public partyChairman = makeAddr("partyChairman");
     address centralBank = makeAddr("centralBank");
 
@@ -149,5 +150,26 @@ contract NationalElectionBodyTest is Test {
 
         // Check that the party is cleared so they can apply again
         assertEq(electionBody.applicationPartyToId("APGA"), 0);
+    }
+
+    function test_add_candidate_for_national_election() public {
+        vm.prank(partyChairman);
+        electionBody.approveAppliedParty(applicationId1);
+
+        uint256 registeredPartyId = electionBody.partyNameToId("PDP");
+
+        vm.expectRevert();
+        electionBody.addCandidateForNationalElection(2, "Atiku Abubakar", candidateAddress);
+
+        vm.expectRevert();
+        electionBody.addCandidateForNationalElection(0, "Atiku Abubakar", candidateAddress);
+        
+        electionBody.addCandidateForNationalElection(registeredPartyId, "Atiku Abubakar", candidateAddress);
+        (uint256 PartyId, uint256 CandidateId, string memory Name, address Address, uint256 Id) = electionBody.partyCandidate(registeredPartyId);
+        
+        assertEq(PartyId, registeredPartyId);
+        assertEq(CandidateId, 1);
+        assertEq(Name, "Atiku Abubakar");
+        assertEq(Address, candidateAddress);
     }
 }

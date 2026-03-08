@@ -167,18 +167,18 @@ contract NationalElectionBody is AccessControl {
     }
 
     function addCandidateForNationalElection(uint256 _partyId, string memory _candidateName, address _address) external {
-        if (_partyId > PartyCount) {
-            revert InvalidPartyId(_partyId, PartyCount);
+        if (_partyId > RegisteredCount) {
+            revert InvalidPartyId(_partyId, RegisteredCount);
         }
         if (_partyId == 0) {
-            revert InvalidPartyId(_partyId, PartyCount);
+            revert InvalidPartyId(_partyId, RegisteredCount);
         }
         
-        Party storage party = registeredParties[_partyId - 1];
+        // Party storage party = registeredParties[_partyId - 1];
 
-        if (party.status != Status.approved) {
-            revert PartyNotApproved(party.status);
-        }
+        // if (party.status != Status.approved) {
+        //     revert PartyNotApproved(party.status);
+        // }
 
         CandidateCount++;
         uint256 newCandidateCount = CandidateCount;
