@@ -14,6 +14,9 @@ contract NationalElectionBodyTest is Test {
     uint256 applicationId3;
     uint256 applicationId4;
     uint256 applicationId5;
+    uint256 firstElectionId;
+    uint256 secondElectionId;
+    uint256 newRegistrationFee;
 
     uint256 partyId1;
     uint256 partyId2;
@@ -27,8 +30,10 @@ contract NationalElectionBodyTest is Test {
     address public apcAddress = makeAddr("thirdPartyAddress");
     address public emptyAddress = makeAddr("emptyPartyAddress");
     address public apgaAddress = makeAddr("apgaAddress");
-    address public candidateAddress = makeAddr("candidateAddress");
-    address public partyChairman = makeAddr("partyChairman");
+    address public pdpCandidateAddress = makeAddr("pdpCandidateAddress");
+    address public apcCandidateAddress = makeAddr("apcCandidateAddress");
+    address public lpCandidateAddress = makeAddr("lpCandidateAddress");
+    address public PartyChairman = makeAddr("partyChairman");
     address centralBank = makeAddr("centralBank");
 
     uint256 constant REGISTRATION_FEE = 10_000e18;
@@ -45,7 +50,7 @@ contract NationalElectionBodyTest is Test {
         
         vm.startPrank(admin);
         electionBody = new NationalElectionBody(address(token));
-        electionBody.grantChairmanRole(partyChairman);
+        electionBody.grantChairmanRole(PartyChairman);
         vm.stopPrank();
 
         vm.prank(pdpAddress);
@@ -108,7 +113,7 @@ contract NationalElectionBodyTest is Test {
         electionBody.approveAppliedParty(applicationId1);
 
         // Only Chairman can Approve Registration
-        vm.prank(partyChairman);
+        vm.prank(PartyChairman);
         electionBody.approveAppliedParty(applicationId1);
         
         (,,,,,NationalElectionBody.Status status) = electionBody.appliedParties(applicationId1 - 1);
@@ -138,7 +143,7 @@ contract NationalElectionBodyTest is Test {
         applicationId5 = _registerParty("All Progressives Grand Alliance", "Willie Mmaduaburochukwu Obiano", "APGA",  apgaAddress);      
         
         // Only Chairman can Approve Registration
-        vm.prank(partyChairman);
+        vm.prank(PartyChairman);
         electionBody.rejectPartyRegistration(applicationId5, "Incomplete Credentials");
         
         (,,,,,NationalElectionBody.Status status) = electionBody.appliedParties(applicationId5 - 1);
@@ -153,23 +158,102 @@ contract NationalElectionBodyTest is Test {
     }
 
     function test_add_candidate_for_national_election() public {
-        vm.prank(partyChairman);
+        vm.prank(PartyChairman);
         electionBody.approveAppliedParty(applicationId1);
 
         uint256 registeredPartyId = electionBody.partyNameToId("PDP");
 
         vm.expectRevert();
-        electionBody.addCandidateForNationalElection(2, "Atiku Abubakar", candidateAddress);
+        electionBody.addCandidateForNationalElection(2, "Atiku Abubakar", pdpCandidateAddress);
 
         vm.expectRevert();
-        electionBody.addCandidateForNationalElection(0, "Atiku Abubakar", candidateAddress);
+        electionBody.addCandidateForNationalElection(0, "Atiku Abubakar", pdpCandidateAddress);
         
-        electionBody.addCandidateForNationalElection(registeredPartyId, "Atiku Abubakar", candidateAddress);
-        (uint256 PartyId, uint256 CandidateId, string memory Name, address Address, uint256 Id) = electionBody.partyCandidate(registeredPartyId);
+        electionBody.addCandidateForNationalElection(registeredPartyId, "Atiku Abubakar", pdpCandidateAddress);
+        (uint256 PartyId, uint256 CandidateId, string memory Name, address Address) = electionBody.partyCandidate(registeredPartyId);
         
         assertEq(PartyId, registeredPartyId);
         assertEq(CandidateId, 1);
         assertEq(Name, "Atiku Abubakar");
-        assertEq(Address, candidateAddress);
+        assertEq(Address, pdpCandidateAddress);
+    }
+
+    function test_get_next_electionId() public {
+        firstElectionId = electionBody.getNextElectionId();
+        secondElectionId = electionBody.getNextElectionId();
+        
+        assertEq(firstElectionId, 1);
+        assertEq(secondElectionId, 2);
+    }
+
+    function test_party_is_registered() public {
+        vm.expectRevert();
+        electionBody.isPartyRegistered("PDP");
+
+        vm.prank(PartyChairman);
+        electionBody.approveAppliedParty(applicationId1);
+        bool stat = electionBody.isPartyRegistered("PDP");
+
+        (uint256 id, string memory partyName, address partyAddress, string memory partyAcronym, string memory partyChairman, NationalElectionBody.Status status) = electionBody.registeredParties(0);
+        assertEq(uint256(status), uint256(NationalElectionBody.Status.approved));
+        assertEq(true, stat);
+    }
+
+    function test_get_party_candidate() public {
+        vm.prank(PartyChairman);
+        electionBody.approveAppliedParty(applicationId1);
+
+        uint256 registeredPartyId = electionBody.partyNameToId("PDP");
+        
+        vm.expectRevert();
+        electionBody.getPartyCandidate("PDP");
+
+        electionBody.addCandidateForNationalElection(1, "Atiku Abubakar", pdpCandidateAddress);
+        (uint256 PartyId, uint256 CandidateId, string memory Name, address Address) = electionBody.partyCandidate(registeredPartyId);
+
+        assertEq(PartyId, registeredPartyId);
+        assertEq(CandidateId, 1);
+        assertEq(Name, "Atiku Abubakar");
+        assertEq(Address, pdpCandidateAddress);
+    }
+
+    function test_get_registered_party_counter() public {
+        vm.prank(PartyChairman);
+        electionBody.approveAppliedParty(applicationId1);
+
+        vm.prank(PartyChairman);
+        electionBody.approveAppliedParty(applicationId2);
+
+        vm.prank(PartyChairman);
+        electionBody.approveAppliedParty(applicationId3);
+
+        assertEq(electionBody.getRegisteredPartyCount(), 3);
+    }
+
+    function test_get_candidate_count() public {
+        vm.prank(PartyChairman);
+        electionBody.approveAppliedParty(applicationId1);
+
+        uint256 registeredPartyId1 = electionBody.partyNameToId("PDP");
+        electionBody.addCandidateForNationalElection(registeredPartyId1, "Atiku Abubakar", pdpCandidateAddress);
+
+        vm.prank(PartyChairman);
+        electionBody.approveAppliedParty(applicationId2);
+        uint256 registeredPartyId2 = electionBody.partyNameToId("LP");
+        electionBody.addCandidateForNationalElection(registeredPartyId2, "Peter Obi", lpCandidateAddress);
+
+
+        vm.prank(PartyChairman);
+        electionBody.approveAppliedParty(applicationId3);
+        uint256 registeredPartyId3 = electionBody.partyNameToId("APC");
+        electionBody.addCandidateForNationalElection(registeredPartyId3, "Bola Ahmed Tinubu", apcCandidateAddress);
+
+        assertEq(electionBody.getCandidateCount(), 3);
+    }
+
+    function test_change_registration_fee() public {
+        newRegistrationFee = 5000e18;
+        electionBody.changeRegistrationFee(5000e18);
+        assertEq(electionBody.RegistrationFee(), newRegistrationFee);
     }
 }

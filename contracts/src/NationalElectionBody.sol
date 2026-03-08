@@ -9,7 +9,7 @@ contract NationalElectionBody is AccessControl {
     
     bytes32 public constant PARTY_CHAIRMAN_ROLE = keccak256("PARTY_CHAIRMAN_ROLE");
 
-    uint256 RegistrationFee = 10000e18;
+    uint256 public RegistrationFee = 10000e18;
     uint256 public ElectionId;
     uint256 public nextElectionId;
 
@@ -25,7 +25,6 @@ contract NationalElectionBody is AccessControl {
         uint256 CandidateId;
         string Name;
         address Address;
-        uint256 Id;
     }
 
     struct Party {
@@ -173,12 +172,6 @@ contract NationalElectionBody is AccessControl {
         if (_partyId == 0) {
             revert InvalidPartyId(_partyId, RegisteredCount);
         }
-        
-        // Party storage party = registeredParties[_partyId - 1];
-
-        // if (party.status != Status.approved) {
-        //     revert PartyNotApproved(party.status);
-        // }
 
         CandidateCount++;
         uint256 newCandidateCount = CandidateCount;
@@ -187,8 +180,7 @@ contract NationalElectionBody is AccessControl {
             PartyId: _partyId,
             CandidateId: newCandidateCount,
             Name: _candidateName,
-            Address: _address,
-            Id: newCandidateCount
+            Address: _address
         });
 
         emit CandidateAdded(newCandidateCount, _partyId, _candidateName, _address);
@@ -218,12 +210,12 @@ contract NationalElectionBody is AccessControl {
     function getPartyCandidate(string memory _party) external view returns (CandidateStruct memory) {
         uint256 partyId = partyNameToId[_party];
         CandidateStruct memory candidate = partyCandidate[partyId];
-        require(candidate.Id != 0, "No candidate for this party");
+        require(candidate.CandidateId != 0, "No candidate for this party");
         return candidate;
     }
 
-    function getPartyCount() external view returns (uint256) {
-        return PartyCount;
+    function getRegisteredPartyCount() external view returns (uint256) {
+        return RegisteredCount;
     }
 
     function getCandidateCount() external view returns (uint256) {
