@@ -15,7 +15,7 @@ contract NationalElectionBody is AccessControl {
 
     error InvalidPartyId(uint256 providedId, uint256 maxId);
     error PartyNotRegistered(Status status);
-    error PartyAlreadyRegistered(Status status);
+    error PartyAlreadyApproved(Status status);
     error PartyNotApproved(Status status);
     error PaymentFailed();
 
@@ -32,7 +32,7 @@ contract NationalElectionBody is AccessControl {
         string partyName;
         address partyAddress;
         string partyAcronym;
-        string partyChiarman;
+        string partyChairman;
         Status status;
     }
     
@@ -80,22 +80,14 @@ contract NationalElectionBody is AccessControl {
         nationalToken = NationalToken(tokenAddress);
 
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(PARTY_CHAIRMAN_ROLE, msg.sender);
         nextElectionId = 1;
-    }
-
-    function grantChairmanRole(address _chairman) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        _grantRole(PARTY_CHAIRMAN_ROLE, _chairman);
     }
 
     function RegisterParty(string memory _partyName, string memory _partyAcronym, string memory _chairman, address _address) external {
         require(applicationPartyToId[_partyAcronym] == 0, "Already applied");
         require(partyNameToId[_partyAcronym] == 0, "Already registered");
 
-        bool success = nationalToken.transferFrom(_address, address(this), RegistrationFee);
-        if (!success) {
-            revert PaymentFailed();
-        }
+        nationalToken.transferFrom(msg.sender, address(this), RegistrationFee);
 
         PartyCount++;
 
@@ -123,7 +115,7 @@ contract NationalElectionBody is AccessControl {
         Party storage party = appliedParties[_applicationId - 1];
 
         if (party.status == Status.approved) {
-            revert PartyAlreadyRegistered(party.status);
+            revert PartyAlreadyApproved(party.status);
         }
         if (party.status == Status.rejected) {
             revert PartyNotRegistered(party.status);
@@ -140,7 +132,7 @@ contract NationalElectionBody is AccessControl {
         emit PartyRegistered(RegisteredCount, party.partyName, party.partyAddress, "Successfully registered");
     }
 
-    function rejectPartyRegistration(uint256 _applicationId, string memory _reason) external onlyRole(PARTY_CHAIRMAN_ROLE) {
+    function rejectPartyRegistration(uint256 _applicationId, string memory _reason) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (_applicationId == 0 || _applicationId > PartyCount) {
             revert InvalidPartyId(_applicationId, PartyCount);
         }
@@ -148,7 +140,7 @@ contract NationalElectionBody is AccessControl {
         Party storage party = appliedParties[_applicationId - 1];
 
         if (party.status == Status.approved) {
-            revert PartyAlreadyRegistered(party.status);
+            revert PartyAlreadyApproved(party.status);
         }
         if (party.status == Status.rejected) {
             revert PartyNotRegistered(party.status);
