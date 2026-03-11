@@ -7,18 +7,18 @@ import "./Registry.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 contract PoliticalPartiesManagerFactory {
-    PoliticalPartiesManager[] public politicalpartymanager;
+    PoliticalPartyManager[] public politicalpartymanager;
     address[] addressPoliticalPartyManager;
 
     function createNewPoliticalParty(
         address _chairman,
         string memory _partyName,
         address _tokenAddress,
-        address _electionBodyAddress,
+        // address _electionBodyAddress,
         address _registryAddress
     ) external {
-        PoliticalPartiesManager politicalparty = new PoliticalPartiesManager(
-            _chairman, _partyName, _tokenAddress, _electionBodyAddress, _registryAddress
+        PoliticalPartyManager politicalparty = new PoliticalPartyManager(
+            _chairman, _partyName, _tokenAddress, _registryAddress
         );
         politicalpartymanager.push(politicalparty);
 
@@ -48,13 +48,13 @@ contract PoliticalPartyManager is AccessControl {
     bytes32 public constant MEMBER_ROLE = keccak256("MEMBER_ROLE");
 
     // reference to the election body contract
-    NationalElectionBody public electionBody;
+    // NationalElectionBody public electionBody;
 
     constructor(
         address _chairman,
         string memory _partyName,
         address _tokenAddress,
-        address _electionBodyAddress,
+        // address _electionBodyAddress,
         address _registryAddress
     ) {
         chairman = _chairman;
@@ -62,7 +62,7 @@ contract PoliticalPartyManager is AccessControl {
         _grantRole(PARTY_LEADER, chairman);
         partyName = _partyName;
         nationalToken = NationalToken(_tokenAddress);
-        electionBody = NationalElectionBody(_electionBodyAddress);
+        // electionBody = NationalElectionBody(_electionBodyAddress);
         registry = Registry(_registryAddress);
 
     }    
@@ -103,21 +103,23 @@ contract PoliticalPartyManager is AccessControl {
 
     address[] public memberAddresses;
 
-    event DeclareWinner(electionId, winner, isTie, highestVoteCount);
-    event MemberRemoved(memberAddress); // check how to use event again
+    event DeclareWinner(uint electionId, uint winner, bool isTie, uint highestVoteCount);
+    event MemberRemoved(address memberAddress); // check how to use event again
 
     error NotYourParty();
     error InvalidCandidateID();
     error AlreadyVoted();
     error InvalidAmount();
     error CallerMustBeAnEOA();
+    error CandidateNotRegistered();
     error NotPaidForCandidacy();
     error CandidateAlreadyExists();
     error NotPaidForMembership();
     error AlreadyPaidForCandidacy();
+    error AlreadyPaidForMembership();
     error ElectionEnded();
     error UseValueGreaterThanZero();
-    error InvalidElectionId();
+    // error InvalidElectionId();
     error NotAuthorizedCitizen();
     error AlreadyAMemberOfAParty();
 
@@ -136,7 +138,7 @@ contract PoliticalPartyManager is AccessControl {
             revert AlreadyPaidForCandidacy();
         }
 
-        if (msg.sender.code.length > 0) {
+        if (msg.sender != tx.origin) {
             revert CallerMustBeAnEOA();
         }
 
@@ -159,12 +161,12 @@ contract PoliticalPartyManager is AccessControl {
             revert NotPaidForCandidacy();
         }
 
-        candidateId[electionId]++;
+        CandidateId[electionId]++;
 
         Candidate[] storage candidateList = candidates[electionId];
 
         candidateList.push(Candidate({
-            id: candidateId[electionId],
+            id: CandidateId[electionId],
             name: _name,
             party: partyName,
             voteCount: 0,
@@ -205,7 +207,7 @@ contract PoliticalPartyManager is AccessControl {
         }
 
         if (msg.sender.code.length > 0) {
-            revert MustBeAnEOA();
+            revert CallerMustBeAnEOA();
         }
 
         nationalToken.transferFrom(msg.sender, address(this), _fee);
@@ -231,12 +233,11 @@ contract PoliticalPartyManager is AccessControl {
 
         memberAddresses.push(msg.sender);
 
-        register.setCitizenPartyMembershipStatusAsTrue(_nin);
+        registry.setCitizenPartyMembershipStatusAsTrue(_nin);
         _grantRole(MEMBER_ROLE, msg.sender);
     }
 
     function removeMember(address _memberAddress, uint256 _nin) external onlyRole(PARTY_LEADER) {
-        Member storage member = members[_memberAddress];
 
         delete members[_memberAddress];
         
@@ -248,7 +249,7 @@ contract PoliticalPartyManager is AccessControl {
             }
         }
 
-        register.setCitizenPartyMembershipStatusAsFalse(_nin);
+        registry.setCitizenPartyMembershipStatusAsFalse(_nin);
 
         emit MemberRemoved(_memberAddress);
     }
@@ -256,7 +257,7 @@ contract PoliticalPartyManager is AccessControl {
     function createElection(uint256 _durationInHours) external onlyRole(PARTY_LEADER) {
         elections[electionId] = ElectionDetails({
             id: electionId,
-            name: partyName,
+            partyName: partyName,
             startTime: block.timestamp,
             endTIme: block.timestamp + (_durationInHours * 1 hours),
             isActive: true,
@@ -264,19 +265,19 @@ contract PoliticalPartyManager is AccessControl {
         });
     }
 
-    function voteforPrimaryElection(uint256 _candidateId, uint256 _electionID) external onlyRole(MEMBER_ROLE) {
+    function voteforPrimaryElection(uint256 _candidateId, uint256 _electionId) external onlyRole(MEMBER_ROLE) {
         Member storage voter = members[msg.sender];
-        Candidate storage candidate = candidates[_candidateId];
+        Candidate storage candidate = candidates[_electionId][_candidateId];
 
         if (block.timestamp > elections[electionId].endTIme || !elections[electionId].isActive) {
             revert ElectionEnded();
         }
 
-        if (_electionID != candidate.id) {
-            revert InvalidElectionId();
-        }
+        // if (_electionID != candidate.id) {
+        //     revert InvalidElectionId();
+        // }
 
-        if (_candidateId == 0 || _candidateId > candidateId) {
+        if (_candidateId == 0 || _candidateId > CandidateId[_electionId]) {
             revert InvalidCandidateID();
         }
 
@@ -300,28 +301,28 @@ contract PoliticalPartyManager is AccessControl {
         bool isTie = false;
         lastWinnerId = winnerId;
 
-        for (uint256 i = 1; i <= candidateId; i++) {
-            if (!candidates[i].isRegistered) continue;
+        for (uint256 i = 1; i <= CandidateId[_electionId]; i++) {
+            if (!candidates[_electionId][i].isRegistered) continue;
 
-            if (candidates[i].voteCount > highestVotes) {
-                highestVotes = candidates[i].voteCount;
+            if (candidates[_electionId][i].voteCount > highestVotes) {
+                highestVotes = candidates[_electionId][i].voteCount;
                 winnerId = i;
                 isTie = false;
-            } else if (candidates[i].voteCount == highestVotes) {
+            } else if (candidates[_electionId][i].voteCount == highestVotes) {
                 isTie = true;
             }
         }
 
         emit DeclareWinner(_electionId, winnerId, isTie, highestVotes);
 
-        return candidates[winnerId];
+        return candidates[_electionId][winnerId];
     }
 
-    function registerWinnerWithElectionBody(uint256 _electionId) external onlyRole(PARTY_LEADER) {
-        Candidate storage winner = candidates[lastWinnerId];
+    // function registerWinnerWithElectionBody(uint256 _electionId) external onlyRole(PARTY_LEADER) {
+    //     Candidate storage winner = candidates[lastWinnerId];
 
-        electionBody.setCandidate(_electionId, winner.name, winner.party, winner.walletAddress);
-    }
+    //     electionBody.setCandidate(_electionId, winner.name, winner.party, winner.walletAddress);
+    // }
 
     function getAllPartyMembers() external view returns (Member[] memory) {
         uint length = memberAddresses.length;
