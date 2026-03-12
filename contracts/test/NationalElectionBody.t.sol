@@ -4,7 +4,7 @@ pragma solidity ^0.8.30;
 import {Test} from "forge-std/Test.sol";
 import "forge-std/console.sol";
 import {NationalToken} from "../src/NationalToken.sol";
-import {NationalElectionBody} from "../src/NationalElectionBody1.sol";
+import {NationalElectionBody} from "../src/NationalElectionBody.sol";
 
 contract NationalElectionBodyTest is Test {
     NationalElectionBody public electionBody;
