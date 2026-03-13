@@ -10,7 +10,7 @@ contract NationalToken is ERC20, AccessControl {
 
     error ZeroAmountNotAccepted();
 
-    bytes32 public constant MINTERS_ROLE = keccak256("MINTERS_ROLE");
+    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
     constructor(address _centralBank) ERC20("NationalToken", "NAT") {
 
@@ -18,10 +18,10 @@ contract NationalToken is ERC20, AccessControl {
 
         _grantRole(DEFAULT_ADMIN_ROLE, _centralBank);
 
-        _grantRole(MINTERS_ROLE, _centralBank);
+        _grantRole(MINTER_ROLE, _centralBank);
     }
 
-    function mint(address _to, uint _amount) public onlyRole(MINTERS_ROLE){
+    function mint(address _to, uint _amount) public onlyRole(MINTER_ROLE){
         if(_amount == 0){
             revert ZeroAmountNotAccepted();
         }
