@@ -42,6 +42,7 @@ contract Registry is AccessControl {
     error ContractAddressNotAllowed(address addr);
     error InvalidNIN();
     error AlreadyAPartyMember();
+    error NotAPartyMember();
     error InvalidGovernmentRegisteredFirstName(string governmentRegisteredFirstName, string inputedName);
     error NINNotFoundInDataBase();
     error EmptyStringInputed();
@@ -91,6 +92,8 @@ contract Registry is AccessControl {
 
     // Use this when a party member needs to decamp from a party so they can register for another party
     function setCitizenPartyMembershipStatusAsFalse(uint _nin) public onlyRole(PARTY_CONTRACT_ROLE){
+        if(!isValidNIN[getNumHash(_nin)]) revert InvalidNIN();
+        if(!isMemberOfAParty[getNumHash(_nin)]) revert NotAPartyMember();
         isMemberOfAParty[getNumHash(_nin)] = false;
 
     }

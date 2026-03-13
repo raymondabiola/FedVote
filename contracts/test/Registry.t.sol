@@ -28,6 +28,8 @@ contract RegistryTest is Test {
     error NotARegisteredVoter();
     error ContractAddressNotAllowed(address addr);
     error InvalidNIN();
+    error AlreadyAPartyMember();
+    error NotAPartyMember();
     error InvalidGovernmentRegisteredFirstName(string governmentRegisteredFirstName, string inputedName);
     error NINNotFoundInDataBase();
     error EmptyStringInputed();
@@ -162,7 +164,54 @@ registry.authorizeCitizensByBatch(ninHashes, names, addresses);
 }
 
 function testIncrementVoterStreak() public {
-    
+    simulateArrayPopulate();
+        bytes32 electionsContractRole = registry.ELECTIONS_CONTRACT_ROLE();
+        registry.grantRole(electionsContractRole, owner);
+
+        registry.incrementVoterStreak(user1);
+        assertEq(registry.getVoterDataViaAddress(user1).voterStreak, 1);
+}
+
+function testResetVoterStreak() public {
+    simulateArrayPopulate();
+        bytes32 electionsContractRole = registry.ELECTIONS_CONTRACT_ROLE();
+        registry.grantRole(electionsContractRole, owner);
+
+        registry.incrementVoterStreak(user1);
+        registry.incrementVoterStreak(user1);
+        registry.resetVoterStreak(user1);
+        assertEq(registry.getVoterDataViaAddress(user1).voterStreak, 0);
+}
+
+function testSetCitizenPartyMembershipStatus() public {
+    simulateArrayPopulate();
+
+        bytes32 electionsContractRole = registry.ELECTIONS_CONTRACT_ROLE();
+        registry.grantRole(electionsContractRole, owner);
+        bytes32 partyContractRole = registry.PARTY_CONTRACT_ROLE();
+        registry.grantRole(partyContractRole, owner);
+
+        registry.setCitizenPartyMembershipStatusAsTrue(2345);
+        assertTrue(registry.checkIfCitizenIsPartyMember(2345));
+
+        vm.expectRevert(AlreadyAPartyMember.selector);
+        registry.setCitizenPartyMembershipStatusAsTrue(2345);
+
+        registry.setCitizenPartyMembershipStatusAsFalse(2345);
+        assertFalse(registry.checkIfCitizenIsPartyMember(2345));
+
+        vm.expectRevert(NotAPartyMember.selector);
+        registry.setCitizenPartyMembershipStatusAsFalse(2345);
+
+        // registry.incrementVoterStreak(user1);
+        // registry.resetVoterStreak(user1);
+        // assertEq(registry.getVoterDataViaAddress(user1).voterStreak, 0);
+
+        vm.expectRevert(InvalidNIN.selector);
+        registry.setCitizenPartyMembershipStatusAsTrue(2399);
+
+                vm.expectRevert(InvalidNIN.selector);
+        registry.setCitizenPartyMembershipStatusAsFalse(2399);
 }
 
 function testVoterSelfRegister() public {
