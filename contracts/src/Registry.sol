@@ -185,6 +185,10 @@ contract Registry is AccessControl {
         return validNINForAddress[_address];
     }
 
+    function getValidNameForNIN(uint _nin) external view returns(string memory){
+        return validNameForNIN[getNumHash(_nin)];
+    }
+
     function checkIfCitizenIsPartyMember(uint _nin) external view returns(bool){
         return isMemberOfAParty[getNumHash(_nin)];
     }
