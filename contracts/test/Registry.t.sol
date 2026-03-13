@@ -83,6 +83,86 @@ assertTrue(registry.getValidityOfNIN(3388));
 assertTrue(registry.getValidityOfNIN(8871));
 assertEq(registry.getValidNINHashForAddress(user3), ninHashes[2]);
 assertTrue(registry.getValidityOfAddress(user2));
+
+
+ninHashes = new bytes32[](3);
+names = new string[](3);
+addresses = new address[](2);
+ninHashes[0] = getNumHash(2345);
+ninHashes[1] = getNumHash(3388);
+ninHashes[2] = getNumHash(8871);
+
+names[0] = "Alice";
+names[1] = "Bob";
+names[2] = "Ben";
+
+addresses[0] = user1;
+addresses[1] = user2;
+
+vm.expectRevert(ArraysNotSameLength.selector);
+registry.authorizeCitizensByBatch(ninHashes, names, addresses);
+
+ninHashes = new bytes32[](1);
+names = new string[](1);
+addresses = new address[](1);
+
+ninHashes[0] = getNumHash(2345);
+names[0] = "Alice";
+addresses[0] = zeroAddress;
+vm.expectRevert(ZeroAddressNotAllowed.selector);
+registry.authorizeCitizensByBatch(ninHashes, names, addresses);
+
+ninHashes = new bytes32[](1);
+names = new string[](1);
+addresses = new address[](1);
+
+ninHashes[0] = getNumHash(2345);
+names[0] = "Bisi";
+addresses[0] = user4;
+
+vm.expectRevert(
+    abi.encodeWithSelector(
+        NINAlreadyAuthorized.selector,
+        ninHashes[0]
+    )
+    );
+registry.authorizeCitizensByBatch(ninHashes, names, addresses);
+
+ninHashes = new bytes32[](1);
+names = new string[](1);
+addresses = new address[](1);
+
+ninHashes[0] = getNumHash(2399);
+names[0] = "Alice";
+addresses[0] = user1;
+
+vm.expectRevert(
+    abi.encodeWithSelector(
+        AddressAlreadyAuthorized.selector,
+        addresses[0]
+    )
+    );
+registry.authorizeCitizensByBatch(ninHashes, names, addresses);
+
+ninHashes = new bytes32[](1);
+names = new string[](1);
+addresses = new address[](1);
+
+ninHashes[0] = getNumHash(2399);
+names[0] = "Alice";
+addresses[0] = address(this);
+
+vm.expectRevert(
+    abi.encodeWithSelector(
+        ContractAddressNotAllowed.selector,
+        addresses[0]
+    )
+    );
+registry.authorizeCitizensByBatch(ninHashes, names, addresses);
+}
+
+function testIncrementVoterStreak() public {
+    
 }
 
 function testVoterSelfRegister() public {

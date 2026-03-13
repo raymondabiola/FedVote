@@ -12,6 +12,8 @@ contract Registry is AccessControl {
     bytes32 public constant PARTY_CONTRACT_ROLE = keccak256("PARTY_CONTRACT_ROLE");
     
     address public headOfRegistrations;
+    uint totalAuthorizedCitizens;
+    uint totalRegisteredVoters;
 
     mapping(bytes32 => bool) private isValidNIN;
     mapping(address => bool) private isValidAddress;
@@ -53,7 +55,7 @@ contract Registry is AccessControl {
 
     // authorizes batch of citizen information from the registration office database using saveral mappings
     function authorizeCitizensByBatch(bytes32[] calldata _ninHashes, string[] calldata _names, address[] calldata _addresses) external onlyRole(REGISTRATION_OFFICER_ROLE) {
-        if(_ninHashes.length != _names.length && _ninHashes.length != _addresses.length){
+        if(_ninHashes.length != _names.length || _ninHashes.length != _addresses.length){
             revert ArraysNotSameLength();
         }
         for(uint i = 0; i < _ninHashes.length; i++) {
@@ -66,6 +68,7 @@ contract Registry is AccessControl {
             isValidAddress[_addresses[i]] = true;
             validNameForNIN[_ninHashes[i]] = _names[i];
             validNINForAddress[_addresses[i]] = _ninHashes[i];
+            totalAuthorizedCitizens += 1;
         }
     }
 
@@ -133,6 +136,7 @@ contract Registry is AccessControl {
         });
 
         registeredVoter[ninHash] = newVoter;
+        totalRegisteredVoters += 1;
         emit VoterRegisteredOnChain(ninHash, msg.sender, _name);
     }
 
