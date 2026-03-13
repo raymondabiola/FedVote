@@ -140,6 +140,8 @@ contract NationalElectionBody is AccessControl {
             revert InvalidPartyId(_applicationId, PartyCount);
         }
 
+        
+       
         Party storage party = appliedParties[electionId][_applicationId];
 
         if (party.status == Status.approved) {
@@ -150,47 +152,82 @@ contract NationalElectionBody is AccessControl {
         }
 
         party.status = Status.approved;
+
+        // uint256 ppartyId = partyNameToId[_partyAcronym];
+        // Party storage pparty = registeredParties[electionId][ppartyId];
+
+        // pparty.status = Status.approved;
+
+        uint256 partyid;
+
+        if (partyNameToId[_partyAcronym] > 0) {
+            uint256 existingPartyId = partyNameToId[_partyAcronym];
+
+            
+            
+            // _party.status = Status.approved;
+
+            Party storage _party = registeredParties[electionId][existingPartyId];
+            _party.partyName = party.partyName;
+            _party.partyAddress = party.partyAddress;
+            _party.partyAcronym = party.partyAcronym;
+            _party.status = Status.approved;
+            _party.id = existingPartyId;
+
+        }
+
+        else {
+            RegisteredCount++;
+            partyid = RegisteredCount;
+
+        }
+            
+            // Create the new registered party directly in storage
+            Party storage pparty = registeredParties[electionId][partyid];
+
+            pparty.id = partyid;
+            pparty.partyName = party.partyName;
+            pparty.partyAddress = party.partyAddress;
+            pparty.partyAcronym = party.partyAcronym;
+            pparty.status = Status.approved;
+
+            partyNameToId[_partyAcronym] = partyid;
+
+        emit PartyRegistered(pparty.id, pparty.partyName, pparty.partyAddress, "Successfully registered");
+    }
+
+    function rejectPartyRegistration(string memory _partyAcronym, string memory _reason) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        uint256 _applicationId = applicationPartyToId[electionId][_partyAcronym];
+        
+        if (_applicationId == 0 || _applicationId > PartyCount) {
+            revert InvalidPartyId(_applicationId, PartyCount);
+        }
+
+        Party storage party = appliedParties[electionId][_applicationId];
+
+        if (party.status == Status.approved) {
+            revert PartyAlreadyRegistered(party.status);
+        }
+        if (party.status == Status.rejected) {
+            revert PartyNotRegistered(party.status);
+        }
+
+        party.status = Status.rejected;
         if (partyNameToId[_partyAcronym] > 0) {
             uint256 existingPartyId = partyNameToId[_partyAcronym];
             registeredParties[electionId][existingPartyId] = party; 
         }
 
-        else {
-            RegisteredCount++;
-            party.id = RegisteredCount;
 
-            registeredParties[electionId][RegisteredCount] = party;
-        
-            partyNameToId[_partyAcronym] = RegisteredCount;
-        }
+    // refund the registration fee
+        nationalToken.transfer(party.partyAddress, RegistrationFee);
 
-        emit PartyRegistered(RegisteredCount, party.partyName, party.partyAddress, "Successfully registered");
+    // clear the name so they can apply again
+     //   applicationPartyToId[party.partyAcronym] = 0;
+
+
+        emit RegistrationRejected(_applicationId, party.partyName, party.partyAddress, _reason);
     }
-
-//     function rejectPartyRegistration(uint256 _applicationId, string memory _reason) external onlyRole(PARTY_CHAIRMAN_ROLE) {
-//         if (_applicationId == 0 || _applicationId > PartyCount) {
-//             revert InvalidPartyId(_applicationId, PartyCount);
-//         }
-
-//         Party storage party = appliedParties[_applicationId - 1];
-
-//         if (party.status == Status.approved) {
-//             revert PartyAlreadyRegistered(party.status);
-//         }
-//         if (party.status == Status.rejected) {
-//             revert PartyNotRegistered(party.status);
-//         }
-
-//         party.status = Status.rejected;
-
-//     // refund the registration fee
-//         nationalToken.transfer(party.partyAddress, RegistrationFee);
-
-//     // clear the name so they can apply again
-//         applicationPartyToId[party.partyAcronym] = 0;
-
-//         emit RegistrationRejected(_applicationId, party.partyName, party.partyAddress, _reason);
-//     }
 
 //     function addCandidateForNationalElection(uint256 _partyId, uint256 _electionId, string memory _candidateName, address _address) external {
 //         if (_electionId != electionId) {

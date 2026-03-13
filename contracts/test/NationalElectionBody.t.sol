@@ -16,8 +16,6 @@ contract NationalElectionBodyTest is Test {
     uint256 applicationId4;
     uint256 applicationId5;
     uint256 applicationId6;
-    uint256 firstElectionId;
-    uint256 secondElectionId;
     uint256 newRegistrationFee;
 
     uint256 partyId1;
@@ -140,11 +138,17 @@ contract NationalElectionBodyTest is Test {
         electionBody.approveAppliedParty("PDP");
 
 
+        uint256 _partyId = electionBody.partyNameToId("PDP");
+        (,,,string memory partyAcronym, NationalElectionBody.Status status) = electionBody.appliedParties(1, applicationId1);
+        (,,,string memory partyAcronym3, NationalElectionBody.Status status1) = electionBody.registeredParties(1, _partyId);
+
+        console.log("registered status: ", uint256(status1));
+        console.log("registered party: ", partyAcronym3);
         
-        (,,,,NationalElectionBody.Status status) = electionBody.appliedParties(1, applicationId1);
         
         assertEq(uint256(status), uint256(NationalElectionBody.Status.approved));
-        console.log(uint256(status));
+        console.log("applied status: ", uint256(status));
+        console.log("applied party: ", partyAcronym);
         
         // check party exists for a particular election
         uint256 _partyId1 = electionBody.partyNameToId("PDP");
@@ -161,6 +165,7 @@ contract NationalElectionBodyTest is Test {
         assertEq(partyAcronym2, "");
         assertEq(id2, 0);
 
+        
     }
 
     // function test_contract_receives_registration_fee_payment() public {
@@ -174,34 +179,48 @@ contract NationalElectionBodyTest is Test {
 
 
 
-//     function test_reject_registration_application() public { 
-//         // Application does not exist because payement of registration fee failed
-//         vm.expectRevert();
-//         applicationId4 = _registerParty("New Nigeria Peoples Party", "Dr. Ajuji Ahmed", "NNPP",  emptyAddress);
-//         vm.expectRevert();
-//         electionBody.approveAppliedParty(applicationId4);
-
-//         // Random person can't Reject Registration
-//         vm.expectRevert();
-//         electionBody.rejectPartyRegistration(applicationId1, "Incomplete Credentials");
-
-//         balanceBefore = token.balanceOf(address(apgaAddress));
-//         applicationId5 = _registerParty("All Progressives Grand Alliance", "Willie Mmaduaburochukwu Obiano", "APGA",  apgaAddress);      
+    function test_reject_registration_application() public { 
+        // Application does not exist because payement of registration fee failed
+        vm.expectRevert();
+        applicationId4 = _registerParty("New Nigeria Peoples Party", 1, "NNPP",  emptyAddress);
+        vm.expectRevert();
+        electionBody.approveAppliedParty("NNPP");
         
-//         // Only Chairman can Approve Registration
-//         vm.prank(PartyChairman);
-//         electionBody.rejectPartyRegistration(applicationId5, "Incomplete Credentials");
+        // Random person can't Reject Registration
+        vm.expectRevert();
+        electionBody.rejectPartyRegistration("PDP", "Incomplete Credentials");
+
+        vm.prank(admin);
+        electionBody.rejectPartyRegistration("PDP", "Incomplete Credentials");
+
+        uint256 _applicationId2 = electionBody.applicationPartyToId(1, "PDP");
+        (uint256 id2, string memory partyName2, address partyAddress2, string memory partyAcronym2, NationalElectionBody.Status status) = electionBody.appliedParties(1, _applicationId2);
+        assertEq(partyName2, "Peoples Democratic Party");
+        assertEq(partyAddress2, pdpAddress);
+        assertEq(partyAcronym2, "PDP");
+        assertEq(id2, _applicationId2);
+        assertEq(uint256(status), uint256(NationalElectionBody.Status.rejected));
+    
+        vm.expectRevert();
+        applicationId1 = _registerParty("Peoples Democratic Party", 1, "PDP", pdpAddress);
+    }
+    //     balanceBefore = token.balanceOf(address(apgaAddress));
+    //     applicationId5 = _registerParty("All Progressives Grand Alliance", "Willie Mmaduaburochukwu Obiano", "APGA",  apgaAddress);      
         
-//         (,,,,,NationalElectionBody.Status status) = electionBody.appliedParties(applicationId5 - 1);
-//         assertEq(uint256(status), uint256(NationalElectionBody.Status.rejected));
+    //     // Only Chairman can Approve Registration
+    //     vm.prank(PartyChairman);
+    //     electionBody.rejectPartyRegistration(applicationId5, "Incomplete Credentials");
+        
+    //     (,,,,,NationalElectionBody.Status status) = electionBody.appliedParties(applicationId5 - 1);
+    //     assertEq(uint256(status), uint256(NationalElectionBody.Status.rejected));
 
-//         // Check that fee was refunded
-//         balanceAfter = token.balanceOf(address(apgaAddress));
-//         assertEq(balanceAfter, balanceBefore);
+    //     // Check that fee was refunded
+    //     balanceAfter = token.balanceOf(address(apgaAddress));
+    //     assertEq(balanceAfter, balanceBefore);
 
-//         // Check that the party is cleared so they can apply again
-//         assertEq(electionBody.applicationPartyToId("APGA"), 0);
-//     }
+    //     // Check that the party is cleared so they can apply again
+    //     assertEq(electionBody.applicationPartyToId("APGA"), 0);
+    // }
 
 //     function test_add_candidate_for_national_election() public {
 //         vm.prank(PartyChairman);
