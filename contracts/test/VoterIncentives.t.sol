@@ -18,6 +18,7 @@ contract VoterIncentivesTest is Test {
 
     uint256 pKey = 0x450802246;
     address deployer;
+    address centralBank;
     address user1;
     address zeroAddress;
 
@@ -41,6 +42,7 @@ contract VoterIncentivesTest is Test {
 
     function setUp() public {
         deployer = address(this);
+        centralBank = makeAddr("1");
         user1 = vm.addr(pKey);
         zeroAddress = address(0);
 
@@ -49,7 +51,7 @@ contract VoterIncentivesTest is Test {
 
         vm.startPrank(deployer);
         democracyBadge = new DemocracyBadge(_name, _symbol);
-        nationalToken = new NationalToken(deployer);
+        nationalToken = new NationalToken(centralBank);
         registry = new Registry();
 
         voterIncentives = new VoterIncentives(
@@ -267,6 +269,7 @@ contract VoterIncentivesTest is Test {
         vm.store(address(democracyBadge), slotA, bytes32(uint256(1)));
 
         bytes32 minterRole = nationalToken.MINTER_ROLE();
+        vm.prank(centralBank);
         nationalToken.grantRole(minterRole, address(voterIncentives));
 
         vm.prank(user1);
@@ -317,6 +320,7 @@ contract VoterIncentivesTest is Test {
         registry.incrementVoterStreak(user1);
 
         bytes32 minterRole = nationalToken.MINTER_ROLE();
+        vm.prank(centralBank);
         nationalToken.grantRole(minterRole, address(voterIncentives));
 
         vm.prank(user1);
