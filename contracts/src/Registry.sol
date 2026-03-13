@@ -55,7 +55,7 @@ contract Registry is AccessControl {
 
     // authorizes batch of citizen information from the registration office database using saveral mappings
     function authorizeCitizensByBatch(bytes32[] calldata _ninHashes, string[] calldata _names, address[] calldata _addresses) external onlyRole(REGISTRATION_OFFICER_ROLE) {
-        if(_ninHashes.length != _names.length && _ninHashes.length != _addresses.length){
+        if(_ninHashes.length != _names.length || _ninHashes.length != _addresses.length){
             revert ArraysNotSameLength();
         }
         for(uint i = 0; i < _ninHashes.length; i++) {
