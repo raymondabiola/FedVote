@@ -1,66 +1,34 @@
-## Foundry
+# FedVote
 
-**Foundry is a blazing fast, portable and modular toolkit for Ethereum application development written in Rust.**
+**A Tokenized, Transparent, Incentived, Secure, and Tamper-Resistant On-Chain Voting Infrastructure**
 
-Foundry consists of:
+A decentralized election protocol inspired by the Nigerian voting system, designed to work globally while preventing double voting and rewarding civic participation.
 
-- **Forge**: Ethereum testing framework (like Truffle, Hardhat and DappTools).
-- **Cast**: Swiss army knife for interacting with EVM smart contracts, sending transactions and getting chain data.
-- **Anvil**: Local Ethereum node, akin to Ganache, Hardhat Network.
-- **Chisel**: Fast, utilitarian, and verbose solidity REPL.
-
-## Documentation
-
-https://book.getfoundry.sh/
-
-## Usage
-
-### Build
-
+## Developer Quick Start Guide
+Install foundry on linux or WSL for windows
+```shell
+$ curl -L https://foundry.paradigm.xyz | bash
+```
+Clone Repo
+```shell
+$ gh repo clone raymondabiola/FedVote
+```
+Change directory
+```shell
+$ cd FedVote
+```
+Install OpenZeppelin Contracts
+```shell
+$ forge install OpenZeppelin/openzeppelin-contracts@v5.3.0
+```
+Build Contracts
 ```shell
 $ forge build
 ```
-
-### Test
-
+Run Test Suite
 ```shell
 $ forge test
 ```
 
-### Format
+## Deployed Instances on Hedera
 
-```shell
-$ forge fmt
-```
-
-### Gas Snapshots
-
-```shell
-$ forge snapshot
-```
-
-### Anvil
-
-```shell
-$ anvil
-```
-
-### Deploy
-
-```shell
-$ forge script script/Counter.s.sol:CounterScript --rpc-url <your_rpc_url> --private-key <your_private_key>
-```
-
-### Cast
-
-```shell
-$ cast <subcommand>
-```
-
-### Help
-
-```shell
-$ forge --help
-$ anvil --help
-$ cast --help
-```
