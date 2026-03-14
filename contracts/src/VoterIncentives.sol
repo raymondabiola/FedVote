@@ -4,8 +4,9 @@ import {DemocracyBadge} from "src/DemocracyBadge.sol";
 import {NationalToken} from "src/NationalToken.sol";
 import {Registry} from "src/Registry.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract VoterIncentives is Ownable {
+contract VoterIncentives is Ownable, ReentrancyGuard {
     DemocracyBadge public democracyBadge;
 
     NationalToken public nationalToken;
@@ -102,7 +103,7 @@ contract VoterIncentives is Ownable {
 
 
 // Voters who have pending incentives will receive them when they call this function
-    function claimIncentives() external {
+    function claimIncentives() external nonReentrant{
         uint voterStreak = registry
             .getVoterDataViaAddress(msg.sender)
             .voterStreak;
