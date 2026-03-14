@@ -1,31 +1,30 @@
 // SPDX-License-Identifier: MIT
-pragma solidity  ^0.8.30;
+pragma solidity ^0.8.30;
 
-import {NationalToken} from "./NationalToken.sol";
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
+import {NationalToken} from "./NationalToken.sol";
 
 contract NationalElectionBody is AccessControl {
-    NationalToken public nationalToken;
-    
-    bytes32 public constant PARTY_CHAIRMAN_ROLE = keccak256("PARTY_CHAIRMAN_ROLE");
 
-    uint256 public RegistrationFee = 10000e18;
+    //  ROLES
+
+    /// Access Granted to the party primaries contract
+    bytes32 public constant PARTY_PRIMARIES_ROLE = keccak256("PARTY_PRIMARIES_ROLE");
+
+    //  STATE
+
+    NationalToken public nationalToken;
+    address private tokenAddress;
+
+    uint256 public RegistrationFee = 10_000e18;
+
     uint256 public electionId;
 
-    error InvalidPartyId(uint256 providedId, uint256 maxId);
-    error PartyNotRegistered(Status status);
-    error PartyAlreadyRegistered(Status status);
-    error PartyNotApproved(Status status);
-    error PaymentFailed();
-    error NotCurrentElection();
+    uint256 private PartyCount;
 
-    enum Status {pending, approved,rejected}
-    struct CandidateStruct {
-        uint256 PartyId;
-        uint256 CandidateId;
-        string Name;
-        address Address;
-    }
+    //  ENUMS & STRUCTS
+
+    enum Status { pending, approved, rejected }
 
     struct Party {
         uint256 id;
@@ -34,264 +33,229 @@ contract NationalElectionBody is AccessControl {
         string partyAcronym;
         Status status;
     }
-    
+
+    struct CandidateStruct {
+        uint256 PartyId;
+        string Name;
+        string PartyAcronym;
+        address Address;
+    }
+
+    //  MAPPINGS
+
+    // electionId => partyId => pending application
     mapping(uint256 => mapping(uint256 => Party)) public appliedParties;
+
+    // electionId => partyId => approved registration record
     mapping(uint256 => mapping(uint256 => Party)) public registeredParties;
-    mapping(uint256 => mapping(uint256 => CandidateStruct)) public partyCandidate;
+
+    // electionId => partyAcronym => partyId  (application lookup)
     mapping(uint256 => mapping(string => uint256)) public applicationPartyToId;
+
+    // partyAcronym => permanent global partyId (never changes across elections)
     mapping(string => uint256) public partyNameToId;
+
+    // partyId => electionId => candidate struct
+    mapping(uint256 => mapping(uint256 => CandidateStruct)) public partyCandidate;
+
+    // Prevents the same election ID being set twice
     mapping(uint256 => bool) public electionIdExist;
 
-    uint256 PartyCount;
-    uint256 RegisteredCount;
-    uint256 CandidateCount;
+    //  ERRORS
 
-    address tokenAddress;
+    error InvalidPartyId(uint256 providedId, uint256 maxId);
+    error PartyNotRegistered(Status status);
+    error PartyAlreadyRegistered(Status status);
+    error PartyNotApproved(Status status);
+    error PaymentFailed();
+    error NotCurrentElection();
 
-    event Registration_Application(
-        uint256 indexed applicationId,
-        string partyName,
+    //  EVENTS
+
+    event RegistrationApplication(
+        uint256 indexed partyId,
+        string partyAcronym,
         address indexed partyAddress,
         string message
     );
 
     event PartyRegistered(
-        uint256 indexed registeredId,
-        string partyName,
+        uint256 indexed partyId,
+        string partyAcronym,
         address indexed partyAddress,
         string message
     );
 
     event RegistrationRejected(
-        uint256 indexed applicationId,
-        string partyName,
+        uint256 indexed partyId,
+        string partyAcronym,
         address indexed partyAddress,
         string reason
     );
 
-    event CandidateAdded(
-        uint256 indexed candidateId, 
-        uint256 indexed partyId, 
-        string name, 
-        address candidateAddress);
+    event CandidateSet(
+        uint256 indexed partyId,
+        uint256 indexed forElectionId,
+        string candidateName,
+        address candidateAddress
+    );
 
-    constructor(address _address) {
-        tokenAddress = _address;
+    //  CONSTRUCTOR
+
+    constructor(address _tokenAddress) {
+        tokenAddress = _tokenAddress;
         nationalToken = NationalToken(tokenAddress);
-
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
-    function setElectionId(uint256 _electionId) public onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(!electionIdExist[_electionId], "ElectionId exists");
+    //  ELECTION ID
 
+    function setElectionId(uint256 _electionId) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(!electionIdExist[_electionId], "ElectionId already exists");
         electionId = _electionId;
         electionIdExist[_electionId] = true;
     }
-    
-    function RegisterParty(string memory _partyName, uint256 _electionId, string memory _partyAcronym, address _address) external {
-        if (_electionId != electionId){
-            revert NotCurrentElection();
-        }
-        require(applicationPartyToId[_electionId][_partyAcronym] == 0, "Already applied");
 
-        bool success = nationalToken.transferFrom(_address, address(this), RegistrationFee);
-        if (!success) {
-            revert PaymentFailed();
-        }
+    //  PARTY REGISTRATION
+
+    function registerParty(
+        string memory _partyName,
+        uint256 _electionId,
+        string memory _partyAcronym
+    ) external {
+        if (_electionId != electionId) revert NotCurrentElection();
+
+        require(
+            applicationPartyToId[_electionId][_partyAcronym] == 0,
+            "Already applied for this election"
+        );
+
+        bool success = nationalToken.transferFrom(msg.sender, address(this), RegistrationFee);
+        if (!success) revert PaymentFailed();
+
+        uint256 assignedPartyId;
+
         if (partyNameToId[_partyAcronym] > 0) {
-            uint256 existingPartyId = partyNameToId[_partyAcronym];
-
-            Party memory party = Party({
-            id: existingPartyId,
-            partyName: _partyName,
-            partyAddress: _address,
-            partyAcronym: _partyAcronym,
-            status: Status.pending
-            });
-            appliedParties[electionId][PartyCount] = party;
-            applicationPartyToId[electionId][_partyAcronym] = PartyCount;
-        }
-        else {
+            // Returning party: reuse permanent global ID
+            assignedPartyId = partyNameToId[_partyAcronym];
+        } else {
+            // New party: mint a permanent ID
             PartyCount++;
-            
-            Party memory party = Party({
-            id: PartyCount,
-            partyName: _partyName,
-            partyAddress: _address,
+            assignedPartyId = PartyCount;
+            partyNameToId[_partyAcronym] = assignedPartyId;
+        }
 
+        Party memory party = Party({
+            id:           assignedPartyId,
+            partyName:    _partyName,
+            partyAddress: msg.sender,
             partyAcronym: _partyAcronym,
-            status: Status.pending
-            });
+            status:       Status.pending
+        });
 
-            appliedParties[electionId][PartyCount] = party;
-            applicationPartyToId[electionId][_partyAcronym] = PartyCount;
-        }
-        
-        
+        appliedParties[_electionId][assignedPartyId]        = party;
+        applicationPartyToId[_electionId][_partyAcronym]    = assignedPartyId;
 
-        emit Registration_Application(PartyCount, _partyName, _address, "Successfully applied");
+        emit RegistrationApplication(assignedPartyId, _partyAcronym, msg.sender, "Successfully applied");
     }
 
+    //  ADMIN: APPROVE
+
+    // Approves a pending party application for the current election.
     function approveAppliedParty(string memory _partyAcronym) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        uint256 _applicationId = applicationPartyToId[electionId][_partyAcronym];
-        
-        if (_applicationId == 0 || _applicationId > PartyCount) {
-            revert InvalidPartyId(_applicationId, PartyCount);
+        uint256 partyId = applicationPartyToId[electionId][_partyAcronym];
+
+        if (partyId == 0 || partyId > PartyCount) {
+            revert InvalidPartyId(partyId, PartyCount);
         }
 
-        
-       
-        Party storage party = appliedParties[electionId][_applicationId];
+        Party storage application = appliedParties[electionId][partyId];
 
-        if (party.status == Status.approved) {
-            revert PartyAlreadyRegistered(party.status);
-        }
-        if (party.status == Status.rejected) {
-            revert PartyNotRegistered(party.status);
-        }
+        if (application.status == Status.approved) revert PartyAlreadyRegistered(application.status);
+        if (application.status == Status.rejected)  revert PartyNotRegistered(application.status);
 
-        party.status = Status.approved;
+        application.status = Status.approved;
 
-        // uint256 ppartyId = partyNameToId[_partyAcronym];
-        // Party storage pparty = registeredParties[electionId][ppartyId];
+        Party storage registered = registeredParties[electionId][partyId];
+        registered.id           = partyId;
+        registered.partyName    = application.partyName;
+        registered.partyAddress = application.partyAddress;
+        registered.partyAcronym = application.partyAcronym;
+        registered.status       = Status.approved;
 
-        // pparty.status = Status.approved;
-
-        uint256 partyid;
-
-        if (partyNameToId[_partyAcronym] > 0) {
-            uint256 existingPartyId = partyNameToId[_partyAcronym];
-
-            
-            
-            // _party.status = Status.approved;
-
-            Party storage _party = registeredParties[electionId][existingPartyId];
-            _party.partyName = party.partyName;
-            _party.partyAddress = party.partyAddress;
-            _party.partyAcronym = party.partyAcronym;
-            _party.status = Status.approved;
-            _party.id = existingPartyId;
-
-        }
-
-        else {
-            RegisteredCount++;
-            partyid = RegisteredCount;
-
-        }
-            
-            // Create the new registered party directly in storage
-            Party storage pparty = registeredParties[electionId][partyid];
-
-            pparty.id = partyid;
-            pparty.partyName = party.partyName;
-            pparty.partyAddress = party.partyAddress;
-            pparty.partyAcronym = party.partyAcronym;
-            pparty.status = Status.approved;
-
-            partyNameToId[_partyAcronym] = partyid;
-
-        emit PartyRegistered(pparty.id, pparty.partyName, pparty.partyAddress, "Successfully registered");
+        emit PartyRegistered(partyId, application.partyAcronym, application.partyAddress, "Successfully registered");
     }
 
-    function rejectPartyRegistration(string memory _partyAcronym, string memory _reason) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        uint256 _applicationId = applicationPartyToId[electionId][_partyAcronym];
-        
-        if (_applicationId == 0 || _applicationId > PartyCount) {
-            revert InvalidPartyId(_applicationId, PartyCount);
+    //  REJECT
+
+    function rejectPartyRegistration(
+        string memory _partyAcronym,
+        string memory _reason
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        uint256 partyId = applicationPartyToId[electionId][_partyAcronym];
+
+        if (partyId == 0 || partyId > PartyCount) {
+            revert InvalidPartyId(partyId, PartyCount);
         }
 
-        Party storage party = appliedParties[electionId][_applicationId];
+        Party storage application = appliedParties[electionId][partyId];
 
-        if (party.status == Status.approved) {
-            revert PartyAlreadyRegistered(party.status);
-        }
-        if (party.status == Status.rejected) {
-            revert PartyNotRegistered(party.status);
-        }
+        if (application.status == Status.approved) revert PartyAlreadyRegistered(application.status);
+        if (application.status == Status.rejected)  revert PartyNotRegistered(application.status);
 
-        party.status = Status.rejected;
-        if (partyNameToId[_partyAcronym] > 0) {
-            uint256 existingPartyId = partyNameToId[_partyAcronym];
-            registeredParties[electionId][existingPartyId] = party; 
-        }
+        application.status = Status.rejected;
 
+        // Refund to the address that paid at application time
+        nationalToken.transfer(application.partyAddress, RegistrationFee);
 
-    // refund the registration fee
-        nationalToken.transfer(party.partyAddress, RegistrationFee);
-
-    // clear the name so they can apply again
-     //   applicationPartyToId[party.partyAcronym] = 0;
-
-
-        emit RegistrationRejected(_applicationId, party.partyName, party.partyAddress, _reason);
+        emit RegistrationRejected(partyId, application.partyAcronym, application.partyAddress, _reason);
     }
 
-//     function addCandidateForNationalElection(uint256 _partyId, uint256 _electionId, string memory _candidateName, address _address) external {
-//         if (_electionId != electionId) {
-//             revert NotCurrentElection();
-//         }
+    //  CANDIDATE MANAGEMENT
 
-//         if (_partyId > RegisteredCount) {
-//             revert InvalidPartyId(_partyId, RegisteredCount);
-//         }
-//         if (_partyId == 0) {
-//             revert InvalidPartyId(_partyId, RegisteredCount);
-//         }
+    function setCandidate(
+        uint256 _electionId,
+        string memory _candidateName,
+        string memory _partyAcronym,
+        address _candidateAddress
+    ) external onlyRole(PARTY_PRIMARIES_ROLE) {
+        uint256 partyId = partyNameToId[_partyAcronym];
+        if (partyId == 0) revert InvalidPartyId(partyId, PartyCount);
 
-//         CandidateCount++;
-//         uint256 newCandidateCount = CandidateCount;
+        // Party must be approved for this specific election before a candidate can be set
+        Party storage registered = registeredParties[_electionId][partyId];
+        if (registered.status != Status.approved) revert PartyNotApproved(registered.status);
 
-//         partyCandidate[_partyId][_electionId] = CandidateStruct({
-//             PartyId: _partyId,
-//             CandidateId: newCandidateCount,
-//             Name: _candidateName,
-//             Address: _address
-//         });
+        partyCandidate[partyId][_electionId] = CandidateStruct({
+            PartyId:      partyId,
+            Name:         _candidateName,
+            PartyAcronym: _partyAcronym,
+            Address:      _candidateAddress
+        });
 
-//         emit CandidateAdded(newCandidateCount, _partyId, _candidateName, _address);
-    
-//     }
+        emit CandidateSet(partyId, _electionId, _candidateName, _candidateAddress);
+    }
 
-//     // function getNextElectionId() external returns (uint256){
-//     //     ElectionId++;
-//     //     nextElectionId = ElectionId;
-//     //     return nextElectionId;
-//     // }
+    //  VIEW FUNCTIONS
 
-//     function isPartyRegistered(string memory _party) external returns(bool) {
-//         uint256 partyId = partyNameToId[_party];
-        
-//         if (partyId <= 0 || partyId > PartyCount) {
-//             revert PartyNotRegistered(Status.pending);
-//         }
-//         Party storage party = registeredParties[partyId - 1];
+    function getPartyCandidate(
+        string memory _partyAcronym,
+        uint256 _electionId
+    ) external view returns (CandidateStruct memory) {
+        uint256 partyId = partyNameToId[_partyAcronym];
+        return partyCandidate[partyId][_electionId];
+    }
 
-//         if (party.status != Status.approved) {
-//             revert PartyNotRegistered(party.status);
-//         }
-//         return true;
-//     }
+    function isPartyRegistered(
+        string memory _partyAcronym,
+        uint256 _electionId
+    ) external view returns (bool) {
+        uint256 partyId = partyNameToId[_partyAcronym];
+        if (partyId == 0) return false;
+        return registeredParties[_electionId][partyId].status == Status.approved;
+    }
 
-//     // function getPartyCandidate(string memory _party) external view returns (CandidateStruct memory) {
-//     //     uint256 partyId = partyNameToId[_party];
-//     //     CandidateStruct memory candidate = partyCandidate[partyId];
-//     //     require(candidate.CandidateId != 0, "No candidate for this party");
-//     //     return candidate;
-//     // }
-
-//     function getRegisteredPartyCount() external view returns (uint256) {
-//         return RegisteredCount;
-//     }
-
-//     function getCandidateCount() external view returns (uint256) {
-//         return CandidateCount;
-//     }
-
-//     function changeRegistrationFee(uint256 _newRegistrationFee) external {
-//         RegistrationFee = _newRegistrationFee;
-//     }
-
+    function getPartyCount() external view returns (uint256) {
+        return PartyCount;
+    }
 }
