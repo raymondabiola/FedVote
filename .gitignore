@@ -27,4 +27,5 @@ frontend/build
 
 .env.local
 .DS_Store
-*.log
+*.log.vscode/
+foundry.lock
