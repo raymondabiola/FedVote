@@ -28,6 +28,8 @@ contract RegistryTest is Test {
     error NotARegisteredVoter();
     error ContractAddressNotAllowed(address addr);
     error InvalidNIN();
+    error AlreadyAPartyMember();
+    error NotAPartyMember();
     error InvalidGovernmentRegisteredFirstName(string governmentRegisteredFirstName, string inputedName);
     error NINNotFoundInDataBase();
     error EmptyStringInputed();
@@ -83,6 +85,133 @@ assertTrue(registry.getValidityOfNIN(3388));
 assertTrue(registry.getValidityOfNIN(8871));
 assertEq(registry.getValidNINHashForAddress(user3), ninHashes[2]);
 assertTrue(registry.getValidityOfAddress(user2));
+
+
+ninHashes = new bytes32[](3);
+names = new string[](3);
+addresses = new address[](2);
+ninHashes[0] = getNumHash(2345);
+ninHashes[1] = getNumHash(3388);
+ninHashes[2] = getNumHash(8871);
+
+names[0] = "Alice";
+names[1] = "Bob";
+names[2] = "Ben";
+
+addresses[0] = user1;
+addresses[1] = user2;
+
+vm.expectRevert(ArraysNotSameLength.selector);
+registry.authorizeCitizensByBatch(ninHashes, names, addresses);
+
+ninHashes = new bytes32[](1);
+names = new string[](1);
+addresses = new address[](1);
+
+ninHashes[0] = getNumHash(2345);
+names[0] = "Alice";
+addresses[0] = zeroAddress;
+vm.expectRevert(ZeroAddressNotAllowed.selector);
+registry.authorizeCitizensByBatch(ninHashes, names, addresses);
+
+ninHashes = new bytes32[](1);
+names = new string[](1);
+addresses = new address[](1);
+
+ninHashes[0] = getNumHash(2345);
+names[0] = "Bisi";
+addresses[0] = user4;
+
+vm.expectRevert(
+    abi.encodeWithSelector(
+        NINAlreadyAuthorized.selector,
+        ninHashes[0]
+    )
+    );
+registry.authorizeCitizensByBatch(ninHashes, names, addresses);
+
+ninHashes = new bytes32[](1);
+names = new string[](1);
+addresses = new address[](1);
+
+ninHashes[0] = getNumHash(2399);
+names[0] = "Alice";
+addresses[0] = user1;
+
+vm.expectRevert(
+    abi.encodeWithSelector(
+        AddressAlreadyAuthorized.selector,
+        addresses[0]
+    )
+    );
+registry.authorizeCitizensByBatch(ninHashes, names, addresses);
+
+ninHashes = new bytes32[](1);
+names = new string[](1);
+addresses = new address[](1);
+
+ninHashes[0] = getNumHash(2399);
+names[0] = "Alice";
+addresses[0] = address(this);
+
+vm.expectRevert(
+    abi.encodeWithSelector(
+        ContractAddressNotAllowed.selector,
+        addresses[0]
+    )
+    );
+registry.authorizeCitizensByBatch(ninHashes, names, addresses);
+}
+
+function testIncrementVoterStreak() public {
+    simulateArrayPopulate();
+        bytes32 electionsContractRole = registry.ELECTIONS_CONTRACT_ROLE();
+        registry.grantRole(electionsContractRole, owner);
+
+        registry.incrementVoterStreak(user1);
+        assertEq(registry.getVoterDataViaAddress(user1).voterStreak, 1);
+}
+
+function testResetVoterStreak() public {
+    simulateArrayPopulate();
+        bytes32 electionsContractRole = registry.ELECTIONS_CONTRACT_ROLE();
+        registry.grantRole(electionsContractRole, owner);
+
+        registry.incrementVoterStreak(user1);
+        registry.incrementVoterStreak(user1);
+        registry.resetVoterStreak(user1);
+        assertEq(registry.getVoterDataViaAddress(user1).voterStreak, 0);
+}
+
+function testSetCitizenPartyMembershipStatus() public {
+    simulateArrayPopulate();
+
+        bytes32 electionsContractRole = registry.ELECTIONS_CONTRACT_ROLE();
+        registry.grantRole(electionsContractRole, owner);
+        bytes32 partyContractRole = registry.PARTY_CONTRACT_ROLE();
+        registry.grantRole(partyContractRole, owner);
+
+        registry.setCitizenPartyMembershipStatusAsTrue(2345);
+        assertTrue(registry.checkIfCitizenIsPartyMember(2345));
+
+        vm.expectRevert(AlreadyAPartyMember.selector);
+        registry.setCitizenPartyMembershipStatusAsTrue(2345);
+
+        registry.setCitizenPartyMembershipStatusAsFalse(2345);
+        assertFalse(registry.checkIfCitizenIsPartyMember(2345));
+
+        vm.expectRevert(NotAPartyMember.selector);
+        registry.setCitizenPartyMembershipStatusAsFalse(2345);
+
+        // registry.incrementVoterStreak(user1);
+        // registry.resetVoterStreak(user1);
+        // assertEq(registry.getVoterDataViaAddress(user1).voterStreak, 0);
+
+        vm.expectRevert(InvalidNIN.selector);
+        registry.setCitizenPartyMembershipStatusAsTrue(2399);
+
+                vm.expectRevert(InvalidNIN.selector);
+        registry.setCitizenPartyMembershipStatusAsFalse(2399);
 }
 
 function testVoterSelfRegister() public {

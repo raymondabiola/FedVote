@@ -5,34 +5,32 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
-contract NationalToken is ERC20, AccessControl {
-    address private centralBank;
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-    error ZeroAmountNotAccepted();
+contract NationalToken is ERC20, AccessControl, ReentrancyGuard {
+    address public centralBank;
 
-    bytes32 public constant MINTERS_ROLE = keccak256("MINTERS_ROLE");
+    error InvalidAddress();
+    error InvalidAmount();
+    error ContractAddressNotAllowed();
+
+    bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
     constructor(address _centralBank) ERC20("NationalToken", "NAT") {
+        if(_centralBank == address(0)) revert InvalidAddress();
+        if(_centralBank.code.length > 0) revert ContractAddressNotAllowed();
 
         centralBank = _centralBank;
 
-        _grantRole(DEFAULT_ADMIN_ROLE, _centralBank);
+        _grantRole(DEFAULT_ADMIN_ROLE, centralBank);
 
-        _grantRole(MINTERS_ROLE, _centralBank);
+        _grantRole(MINTER_ROLE, centralBank);
     }
 
-    function mint(address _to, uint _amount) public onlyRole(MINTERS_ROLE){
+    function mint(address _to, uint _amount) external nonReentrant onlyRole(MINTER_ROLE){
         if(_amount == 0){
-            revert ZeroAmountNotAccepted();
+            revert InvalidAmount();
         }
         _mint(_to, _amount);
-    }
-
-    function setAdminRole(bytes32 role, bytes32 adminRole) external onlyRole(DEFAULT_ADMIN_ROLE){
-        _setRoleAdmin(role,adminRole);
-    }
-
-    function centralBankAddress() external view returns(address){
-        return centralBank;
     }
 }
