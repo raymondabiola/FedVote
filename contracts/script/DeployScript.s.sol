@@ -73,7 +73,6 @@ contract DeployScript is Script {
     }
 
     function createPartiesFromFactory() internal {
-        //Initialize contract address in other deployed contracts.
         politicalPartiesManagerFactory.createNewPoliticalParty(partyAChairmanAddress, "PartyA", address(nationalToken));
         politicalPartiesManagerFactory.createNewPoliticalParty(partyBChairmanAddress, "PartyB", address(nationalToken));
         politicalPartiesManagerFactory.createNewPoliticalParty(partyCChairmanAddress, "PartyC", address(nationalToken));
@@ -93,12 +92,12 @@ contract DeployScript is Script {
         registry.grantRole(electionsContractRoleRegistry, address(elections));
         democracyBadge.grantRole(electionsContractRoleDemocracyBadge, address(elections));
 
-        registry.grantRole(partyContractRole, address(partyA));
-        registry.grantRole(partyContractRole, address(partyB));
-        registry.grantRole(partyContractRole, address(partyC));
+        registry.grantRole(partyContractRole, politicalPartiesManagerFactory.addressPoliticalPartyManager(0));
+        registry.grantRole(partyContractRole, politicalPartiesManagerFactory.addressPoliticalPartyManager(1));
+        registry.grantRole(partyContractRole, politicalPartiesManagerFactory.addressPoliticalPartyManager(2));
 
-        nationalElectionBody.grantRole(partiesPrimaryRole, address(partyA));
-        nationalElectionBody.grantRole(partiesPrimaryRole, address(partyB));
-        nationalElectionBody.grantRole(partiesPrimaryRole, address(partyC));
+        nationalElectionBody.grantRole(partiesPrimaryRole, politicalPartiesManagerFactory.addressPoliticalPartyManager(0));
+        nationalElectionBody.grantRole(partiesPrimaryRole, politicalPartiesManagerFactory.addressPoliticalPartyManager(1));
+        nationalElectionBody.grantRole(partiesPrimaryRole, politicalPartiesManagerFactory.addressPoliticalPartyManager(2));
     }
 }
