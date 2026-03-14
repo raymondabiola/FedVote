@@ -89,7 +89,7 @@ FedVote is a modular blockchain election protocol that:
 
 <br>
 
-# Description
+# Contract Description
 ## National Token Contract (ERC20)
 - Token Name: National Token
 - Symbol: NAT
@@ -127,20 +127,20 @@ PARTY_CONTRACT_ROLE
 <br>
 
 ## National Election Body Contract
-- Contract implements registration of a list of JSON parties.
-- Party registration will include registration of party name, party chairman, and party candidate for a list of elections. In the case of no candidate for an election at a time, the string value of candidate name for such party and for such election will default to an empty string.
+- Contract implements registration of political parties
+- Also provides a function for each party to provide their aspiring candidate for national elections
+- Provides election Id to the elections contract whenever there is an election
 
-#### Functional requirement
+#### Admin Roles
 ```
-registerParty()  // populates a Party struct mapping
-changePartyChairman()
-partyCandidate()
-// 2D Party candidate mapping: Party name => ElectionID => // Party Candidate struct
-mapping(string => mapping(uint => PartyCandidate)) partyCandidate
+DEFAULT_ADMIN_ROLE
+PARTY_PRIMARIES_ROLE
 ```
 
 #### Dependencies
+- OpenZeppelin Access Control
 - OpenZeppelin Reentrancy Guard
+- National Token
 
 ## Political Parties Manager Contract
 - This contract manages the activies of a single political party
@@ -166,13 +166,7 @@ MEMBER_ROLE
 ## Political Party Manager Factory Contract
 - Manages creation of new child contracts for political parties manager contract
 
-#### Admin 
-```
-onlyOwner
-```
-
 #### Dependencies
-- OpenZeppelin Ownable
 - Political Parties Manager
 
 ## Elections Contract
