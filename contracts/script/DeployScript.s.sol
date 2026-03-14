@@ -12,7 +12,7 @@ import "../src/VoterIncentives.sol";
 
 contract DeployScript is Script {
     DemocracyBadge public democracyBadge;
-    Elections public elections;
+    Election public elections;
     NationalElectionBody public nationalElectionBody;
     NationalToken public nationalToken;
     PoliticalPartiesManagerFactory public politicalPartiesManagerFactory;
