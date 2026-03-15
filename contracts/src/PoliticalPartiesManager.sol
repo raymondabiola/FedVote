@@ -2,38 +2,16 @@
 pragma solidity ^0.8.30;
 
 import "./NationalToken.sol";
-import "./NationalElectionBody.sol";
 import "./Registry.sol";
+import {INationalElectionBody} from "./interfaces/INationalElectionBody.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract PoliticalPartiesManagerFactory {
-    PoliticalPartyManager[] public politicalpartymanager;
-    address[] addressPoliticalPartyManager;
-
-    function createNewPoliticalParty(
-        address _chairman,
-        string memory _partyName,
-        address _tokenAddress,
-        // address _electionBodyAddress,
-        address _registryAddress
-    ) external {
-        PoliticalPartyManager politicalparty =
-            new PoliticalPartyManager(_chairman, _partyName, _tokenAddress, _registryAddress);
-        politicalpartymanager.push(politicalparty);
-
-        addressPoliticalPartyManager.push(address(politicalparty));
-    }
-
-    function getAllPoliticalParty() external view returns (address[] memory) {
-        return addressPoliticalPartyManager;
-    }
-}
-
-contract PoliticalPartyManager is AccessControl {
-    // token used to pay for candidacy
+contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
+    
     NationalToken public nationalToken;
     Registry public registry;
-    // NationalElectionBody public electionBody;
+    NationalElectionBody public electionBody;
 
     string public partyName;
     address public chairman;
@@ -50,7 +28,7 @@ contract PoliticalPartyManager is AccessControl {
         address _chairman,
         string memory _partyName,
         address _nationalTokenAddress,
-        // address _electionBodyAddress,
+        address _electionBodyAddress,
         address _registryAddress
     ) {
         chairman = _chairman;
@@ -58,7 +36,7 @@ contract PoliticalPartyManager is AccessControl {
         _grantRole(PARTY_LEADER, chairman);
         partyName = _partyName;
         nationalToken = NationalToken(_nationalTokenAddress);
-        // electionBody = NationalElectionBody(_electionBodyAddress);
+        electionBody = INationalElectionBody(_electionBodyAddress);
         registry = Registry(_registryAddress);
     }
 
@@ -113,10 +91,13 @@ contract PoliticalPartyManager is AccessControl {
     error AlreadyPaidForCandidacy();
     error AlreadyPaidForMembership();
     error ElectionEnded();
-    error UseValueGreaterThanZero();
     error ElectionIsOngoing();
     error NotAuthorizedCitizen();
     error AlreadyAMemberOfAParty();
+
+    function setElectionId() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        electionId = electionBody.getElectionId();
+    }
 
     function setCandidacyFee(uint256 _candidacyFee) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (_candidacyFee == 0) {
@@ -134,7 +115,7 @@ contract PoliticalPartyManager is AccessControl {
         membershipFee = _membershipFee;
     }
 
-    function payForMembership(uint256 _nin) external {
+    function payForMembership(uint256 _nin) external nonReentrant {
         uint256 _fee = membershipFee;
 
         if (registry.checkIfCitizenIsPartyMember(_nin)) {
@@ -224,7 +205,7 @@ contract PoliticalPartyManager is AccessControl {
         emit MemberRemoved(_memberAddress);
     }
 
-    function payForCandidateship() external onlyRole(MEMBER_ROLE) {
+    function payForCandidateship() external nonReentrant onlyRole(MEMBER_ROLE) {
         uint256 _fee = candidacyFee;
 
         if (hasPaidForCandidacy[msg.sender]) {
@@ -234,14 +215,6 @@ contract PoliticalPartyManager is AccessControl {
         nationalToken.transferFrom(msg.sender, address(this), _fee);
 
         hasPaidForCandidacy[msg.sender] = true;
-    }
-
-    function setElectionId(uint256 _electionId) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (_electionId == 0) {
-            revert UseValueGreaterThanZero();
-        }
-
-        electionId = _electionId;
     }
 
     function registerCandidate(string memory _name, uint _nin) external onlyRole(MEMBER_ROLE) {
@@ -355,11 +328,11 @@ contract PoliticalPartyManager is AccessControl {
         return candidates[_electionId][winnerId];
     }
 
-    // function registerWinnerWithElectionBody(uint256 _electionId) external onlyRole(PARTY_LEADER) {
-    //     Candidate memory winner = candidates[_electionId][lastWinnerId];
+    function registerWinnerWithElectionBody(uint256 _electionId) external onlyRole(PARTY_LEADER) {
+        Candidate memory winner = candidates[_electionId][lastWinnerId];
 
-    //     electionBody.setCandidate(_electionId, winner.name, winner.party, winner.walletAddress);
-    // }
+        electionBody.setCandidate(_electionId, winner.name, winner.party, winner.walletAddress);
+    }
 
     // VIEW FUNCTIONS
 
