@@ -4,15 +4,18 @@ pragma solidity ^0.8.30;
 import {Test} from "forge-std/Test.sol";
 import "forge-std/console.sol";
 import {PoliticalPartyManager} from "../src/PoliticalPartiesManager.sol";
-import {PoliticalPartiesManagerFactory} from "../src/PoliticalPartiesManager.sol";
+import {PoliticalPartiesManagerFactory} from "../src/PoliticalPartiesManagerFactory.sol";
 import {NationalToken} from "../src/NationalToken.sol";
 import {Registry} from "../src/Registry.sol";
+import {NationalElectionBody} from "../src/NationalElectionBody.sol";
 
 contract PoliticalPartyManagerTest is Test {
     PoliticalPartiesManagerFactory factory;
     PoliticalPartyManager partyManager;
     NationalToken nationalToken;
     Registry registry;
+    NationalElectionBody nationalElectionBody;
+
 
     address[] public partyManagers;
 
@@ -43,7 +46,8 @@ contract PoliticalPartyManagerTest is Test {
         factory = new PoliticalPartiesManagerFactory();
         nationalToken = new NationalToken(centralBankAddress);
         registry = new Registry();
-        factory.createNewPoliticalParty(chairman, partyName, address(nationalToken), address(registry));
+        nationalElectionBody = new NationalElectionBody(address(nationalToken));
+        factory.createNewPoliticalParty(chairman, partyName, address(nationalToken), address(nationalElectionBody), address(registry));
         partyManagers = factory.getAllPoliticalParty();
         partyManager = PoliticalPartyManager(partyManagers[0]);
 
@@ -514,4 +518,31 @@ contract PoliticalPartyManagerTest is Test {
         vm.expectRevert();
         partyManager.declareWinner(electionId);
     }
+
+    function testRegisterWinnerWithElectionBody() public {
+        uint256 electionId = 101;
+        vm.prank(chairman);
+        partyManager.setElectionId(electionId);
+        vm.startPrank(chairman);
+        uint startTime = block.timestamp; 
+        partyManager.createElection(1);
+        vm.stopPrank();
+
+        setupValidMember();
+        vm.startPrank(user1);
+        partyManager.registerCandidate("Alice", 2345);
+        partyManager.voteforPrimaryElection(1, electionId);
+        vm.stopPrank();
+        vm.warp(startTime + 7203);
+
+        vm.prank(address(this));
+        nationalElectionBody.grantRole(nationalElectionBody.PARTY_PRIMARIES_ROLE(), address(partyManager));
+
+        vm.startPrank(chairman);
+        partyManager.declareWinner(electionId);
+        partyManager.registerWinnerWithElectionBody(electionId);
+        vm.stopPrank();
+
+        assertEq(nationalElectionBody.getPartyCandidate("APC", electionId).Address, user1);
+    }   
 }
