@@ -2,8 +2,8 @@
 pragma solidity ^0.8.30;
 
 import "./NationalToken.sol";
-import "./NationalElectionBody.sol";
 import "./Registry.sol";
+import {INationalElectionBody} from "./interfaces/INationalElectionBody.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
@@ -36,7 +36,7 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
         _grantRole(PARTY_LEADER, chairman);
         partyName = _partyName;
         nationalToken = NationalToken(_nationalTokenAddress);
-        electionBody = NationalElectionBody(_electionBodyAddress);
+        electionBody = INationalElectionBody(_electionBodyAddress);
         registry = Registry(_registryAddress);
     }
 
@@ -91,10 +91,13 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
     error AlreadyPaidForCandidacy();
     error AlreadyPaidForMembership();
     error ElectionEnded();
-    error UseValueGreaterThanZero();
     error ElectionIsOngoing();
     error NotAuthorizedCitizen();
     error AlreadyAMemberOfAParty();
+
+    function setElectionId() external onlyRole(DEFAULT_ADMIN_ROLE) {
+        electionId = electionBody.getElectionId();
+    }
 
     function setCandidacyFee(uint256 _candidacyFee) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (_candidacyFee == 0) {
@@ -212,14 +215,6 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
         nationalToken.transferFrom(msg.sender, address(this), _fee);
 
         hasPaidForCandidacy[msg.sender] = true;
-    }
-
-    function setElectionId(uint256 _electionId) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (_electionId == 0) {
-            revert UseValueGreaterThanZero();
-        }
-
-        electionId = _electionId;
     }
 
     function registerCandidate(string memory _name, uint _nin) external onlyRole(MEMBER_ROLE) {
