@@ -9,6 +9,6 @@ interface INationalElectionBody {
         string memory _candidateName,
         string memory _partyAcronym,
         address _candidateAddress
-    ) external onlyRole(PARTY_PRIMARIES_ROLE);
+    ) external;
 
 }
