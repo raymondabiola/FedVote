@@ -61,7 +61,7 @@ contract DeployScript is Script {
         registry = new Registry();
         politicalPartiesManagerFactory = new PoliticalPartiesManagerFactory();
         nationalElectionBody = new nationalElectionBody(address(nationalToken));
-        elections = new Elections(address(registry), address(democracyBadge), address(nationalElectionBody));
+        elections = new Election(address(registry), address(democracyBadge), address(nationalElectionBody));
     }
 
     function deployNationalTokenContract() internal {
