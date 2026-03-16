@@ -2,6 +2,8 @@
 pragma solidity ^0.8.30;
 
 interface INationalElectionBody {
+    function setElectionId(uint256 _electionId) external; 
+
     function getElectionId() external view returns (uint256);
     
     function setCandidate(
