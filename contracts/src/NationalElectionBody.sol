@@ -237,6 +237,9 @@ contract NationalElectionBody is AccessControl {
     }
 
     //  VIEW FUNCTIONS
+    function getElectionId() external view returns (uint256) {
+        return electionId;
+    }
 
     function getPartyCandidate(
         string memory _partyAcronym,
