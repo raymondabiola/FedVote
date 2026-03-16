@@ -11,7 +11,7 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
     
     NationalToken public nationalToken;
     Registry public registry;
-    NationalElectionBody public electionBody;
+    INationalElectionBody public electionBody;
 
     string public partyName;
     address public chairman;
