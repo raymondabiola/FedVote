@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
+
 import {DemocracyBadge} from "src/DemocracyBadge.sol";
 import {NationalToken} from "src/NationalToken.sol";
 import {Registry} from "src/Registry.sol";
