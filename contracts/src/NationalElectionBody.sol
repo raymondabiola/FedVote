@@ -3,8 +3,9 @@ pragma solidity ^0.8.30;
 
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {NationalToken} from "./NationalToken.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract NationalElectionBody is AccessControl {
+contract NationalElectionBody is AccessControl, ReentrancyGuard {
 
     //  ROLES
 
@@ -14,9 +15,8 @@ contract NationalElectionBody is AccessControl {
     //  STATE
 
     NationalToken public nationalToken;
-    address private tokenAddress;
 
-    uint256 public RegistrationFee = 10_000e18;
+    uint256 public registrationFee = 10_000e18;
 
     uint256 public electionId;
 
@@ -31,6 +31,7 @@ contract NationalElectionBody is AccessControl {
         string partyName;
         address partyAddress;
         string partyAcronym;
+        uint256 feePaid;
         Status status;
     }
 
@@ -69,6 +70,9 @@ contract NationalElectionBody is AccessControl {
     error PartyNotApproved(Status status);
     error PaymentFailed();
     error NotCurrentElection();
+    error InsufficientContractBal();
+    error InvalidAmount();
+    error InvalidAddress();
 
     //  EVENTS
 
@@ -103,9 +107,17 @@ contract NationalElectionBody is AccessControl {
     //  CONSTRUCTOR
 
     constructor(address _tokenAddress) {
-        tokenAddress = _tokenAddress;
-        nationalToken = NationalToken(tokenAddress);
+        nationalToken = NationalToken(_tokenAddress);
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    }
+
+    function updateNationalTokenCA(address _nationalToken) external onlyRole(DEFAULT_ADMIN_ROLE){
+          if (_nationalToken == address(0)) revert InvalidAddress();
+        nationalToken = NationalToken(_nationalToken);
+    }
+
+    function updateRegFee(uint _amount) external onlyRole(DEFAULT_ADMIN_ROLE){
+        registrationFee = _amount;
     }
 
     //  ELECTION ID
@@ -122,16 +134,13 @@ contract NationalElectionBody is AccessControl {
         string memory _partyName,
         uint256 _electionId,
         string memory _partyAcronym
-    ) external {
+    ) external nonReentrant{
         if (_electionId != electionId) revert NotCurrentElection();
 
         require(
             applicationPartyToId[_electionId][_partyAcronym] == 0,
             "Already applied for this election"
         );
-
-        bool success = nationalToken.transferFrom(msg.sender, address(this), RegistrationFee);
-        if (!success) revert PaymentFailed();
 
         uint256 assignedPartyId;
 
@@ -150,11 +159,15 @@ contract NationalElectionBody is AccessControl {
             partyName:    _partyName,
             partyAddress: msg.sender,
             partyAcronym: _partyAcronym,
+            feePaid: registrationFee,
             status:       Status.pending
         });
 
         appliedParties[_electionId][assignedPartyId]        = party;
         applicationPartyToId[_electionId][_partyAcronym]    = assignedPartyId;
+
+        bool success = nationalToken.transferFrom(msg.sender, address(this), registrationFee);
+        if (!success) revert PaymentFailed();
 
         emit RegistrationApplication(assignedPartyId, _partyAcronym, msg.sender, "Successfully applied");
     }
@@ -206,7 +219,7 @@ contract NationalElectionBody is AccessControl {
         application.status = Status.rejected;
 
         // Refund to the address that paid at application time
-        nationalToken.transfer(application.partyAddress, RegistrationFee);
+        nationalToken.transfer(application.partyAddress, application.feePaid);
 
         emit RegistrationRejected(partyId, application.partyAcronym, application.partyAddress, _reason);
     }
@@ -236,6 +249,13 @@ contract NationalElectionBody is AccessControl {
         emit CandidateSet(partyId, _electionId, _candidateName, _candidateAddress);
     }
 
+    function withdraw(address _to, uint _amount) external onlyRole(DEFAULT_ADMIN_ROLE)nonReentrant{
+        if(_to == address(0)) revert InvalidAddress();
+        if(_amount == 0) revert InvalidAmount();
+        if(_amount > nationalToken.balanceOf(address(this))) revert InsufficientContractBal();
+        nationalToken.transfer(_to, _amount);
+    }
+
     //  VIEW FUNCTIONS
     function getElectionId() external view returns (uint256) {
         return electionId;
@@ -260,5 +280,9 @@ contract NationalElectionBody is AccessControl {
 
     function getPartyCount() external view returns (uint256) {
         return PartyCount;
+    }
+
+    function checkIfElectionExist(uint _electionId) external view returns(bool){
+        return electionIdExist[_electionId];
     }
 }

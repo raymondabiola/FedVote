@@ -100,7 +100,7 @@ contract NationalElectionBodyTest is Test {
         uint256 partyId = electionBody.partyNameToId("PDP");
         assertEq(partyId, 1);
 
-        (uint256 id, string memory name,, string memory acronym, NationalElectionBody.Status status) =
+        (uint256 id, string memory name,, string memory acronym,, NationalElectionBody.Status status) =
             electionBody.appliedParties(1, partyId);
 
         assertEq(id, 1);
@@ -170,10 +170,10 @@ contract NationalElectionBodyTest is Test {
 
         uint256 partyId = electionBody.partyNameToId("PDP");
 
-        (,,,,NationalElectionBody.Status appStatus) = electionBody.appliedParties(1, partyId);
+        (,,,,,NationalElectionBody.Status appStatus) = electionBody.appliedParties(1, partyId);
         assertEq(uint256(appStatus), uint256(NationalElectionBody.Status.approved));
 
-        (uint256 id, string memory name, address addr, string memory acronym, NationalElectionBody.Status regStatus) =
+        (uint256 id, string memory name, address addr, string memory acronym,, NationalElectionBody.Status regStatus) =
             electionBody.registeredParties(1, partyId);
         assertEq(id, partyId);
         assertEq(name, "Peoples Democratic Party");
@@ -212,7 +212,7 @@ contract NationalElectionBodyTest is Test {
         electionBody.approveAppliedParty("PDP");
 
         uint256 partyId = electionBody.partyNameToId("PDP");
-        (uint256 id1,,,,NationalElectionBody.Status s1) = electionBody.registeredParties(1, partyId);
+        (uint256 id1,,,,,NationalElectionBody.Status s1) = electionBody.registeredParties(1, partyId);
         assertEq(id1, partyId);
         assertEq(uint256(s1), uint256(NationalElectionBody.Status.approved));
 
@@ -224,12 +224,12 @@ contract NationalElectionBodyTest is Test {
         vm.prank(admin);
         electionBody.approveAppliedParty("PDP");
 
-        (uint256 id2,,,,NationalElectionBody.Status s2) = electionBody.registeredParties(2, partyId);
+        (uint256 id2,,,,,NationalElectionBody.Status s2) = electionBody.registeredParties(2, partyId);
         assertEq(id2, partyId);
         assertEq(uint256(s2), uint256(NationalElectionBody.Status.approved));
 
         // Election 1 record must be untouched
-        (uint256 stillId1,,,,NationalElectionBody.Status stillS1) = electionBody.registeredParties(1, partyId);
+        (uint256 stillId1,,,,,NationalElectionBody.Status stillS1) = electionBody.registeredParties(1, partyId);
         assertEq(stillId1, partyId);
         assertEq(uint256(stillS1), uint256(NationalElectionBody.Status.approved));
     }
@@ -245,7 +245,7 @@ contract NationalElectionBodyTest is Test {
         electionBody.rejectPartyRegistration("PDP", "Incomplete credentials");
 
         uint256 partyId = electionBody.partyNameToId("PDP");
-        (,,,,NationalElectionBody.Status status) = electionBody.appliedParties(1, partyId);
+        (,,,,,NationalElectionBody.Status status) = electionBody.appliedParties(1, partyId);
         assertEq(uint256(status), uint256(NationalElectionBody.Status.rejected));
 
         // Fee refunded
@@ -286,7 +286,7 @@ contract NationalElectionBodyTest is Test {
         electionBody.rejectPartyRegistration("PDP", "reason");
 
         // Election 1 registeredParties record must still be approved
-        (,,,,NationalElectionBody.Status s1) = electionBody.registeredParties(1, partyId);
+        (,,,,,NationalElectionBody.Status s1) = electionBody.registeredParties(1, partyId);
         assertEq(uint256(s1), uint256(NationalElectionBody.Status.approved));
     }
 

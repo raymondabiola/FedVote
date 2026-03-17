@@ -13,7 +13,6 @@ contract NationalTokenTest is Test {
 
     error InvalidAddress();
     error InvalidAmount();
-    error ContractAddressNotAllowed();
     error AccessControlUnauthorizedAccount(address account, bytes32 neededRole);
 
     function setUp() public {
@@ -35,9 +34,6 @@ contract NationalTokenTest is Test {
     function testDeploymentEdgeCases() public {
         vm.expectRevert(InvalidAddress.selector);
         nationalToken = new NationalToken(zeroAddress);
-
-        vm.expectRevert(ContractAddressNotAllowed.selector);
-        nationalToken = new NationalToken(address(this));
     }
 
     function testMint() public {

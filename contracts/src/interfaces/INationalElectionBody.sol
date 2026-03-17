@@ -5,6 +5,8 @@ interface INationalElectionBody {
     function setElectionId(uint256 _electionId) external; 
 
     function getElectionId() external view returns (uint256);
+
+    function checkIfElectionExist(uint _electionId) external view returns(bool);
     
     function setCandidate(
         uint256 _electionId,

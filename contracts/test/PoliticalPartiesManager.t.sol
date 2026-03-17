@@ -291,6 +291,11 @@ contract PoliticalPartyManagerTest is Test {
 
     function testMembersCanRegisterAsCandidate() public {
         setupValidMember();
+        uint256 electionId = 101;
+        vm.prank(address(this));
+        nationalElectionBody.setElectionId(electionId);
+        vm.prank(chairman);
+        partyManager.setElectionId();
         vm.prank(user1);
         partyManager.registerCandidate("Alice", 2345);
         assertTrue(partyManager.getPartyCandidate(electionId, 1).isRegistered);
@@ -335,12 +340,15 @@ contract PoliticalPartyManagerTest is Test {
 
     function testAdminCantRemoveUnregisteredCandidate() public {
         uint256 electionId = 101;
+        vm.prank(address(this));
+        nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
 
         setupValidMember();
-        vm.prank(user1);
+        vm.startPrank(user1);
         partyManager.registerCandidate("Alice", 2345);
+        vm.stopPrank();
 
         vm.prank(chairman);
         vm.expectRevert();
@@ -455,8 +463,11 @@ contract PoliticalPartyManagerTest is Test {
 
     function testAttackerCantVoteForPrimaryElection() public {
         uint256 electionId = 101;
+        vm.prank(address(this));
+        nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
+
         vm.prank(chairman);
         partyManager.createElection(2);
     
