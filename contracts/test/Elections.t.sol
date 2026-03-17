@@ -2,36 +2,31 @@
 pragma solidity ^0.8.30;
 
 import "forge-std/Test.sol";
-import "../src/Elections.sol"; 
+import "../src/Elections.sol";
 
-// 1. UPDATED MOCK CONTRACTS
+// MOCK CONTRACTS
 
 contract MockRegistry is IRegistry {
+
     mapping(address => bytes32) public addressToNin;
     mapping(bytes32 => RegisteredVoter) public voters;
-    
-    // Control flags to test try/catch blocks
+
+    // Failure flags for try/catch coverage
     bool public shouldFailIncrement;
-    bool public shouldFailSet;
+    bool public shouldFailReset;
 
-    function setShouldFailIncrement(bool _status) external {
-        shouldFailIncrement = _status;
-    }
+    function setShouldFailIncrement(bool _v) external { shouldFailIncrement = _v; }
+    function setShouldFailReset(bool _v)     external { shouldFailReset = _v; }
 
-    function setShouldFailSet(bool _status) external {
-        shouldFailSet = _status;
-    }
-
-    // Helper to setup mock data
+    // Test helper
     function setVoter(address _addr, bytes32 _nin, bool _isReg, uint256 _streak) external {
         addressToNin[_addr] = _nin;
         voters[_nin].isRegistered = _isReg;
         voters[_nin].voterAddress = _addr;
-        voters[_nin].voterStreak = _streak;
+        voters[_nin].voterStreak  = _streak;
     }
 
-    // Interface Implementation
-
+    // IRegistry implementation
     function getValidNINHashForAddress(address _addr) external view returns (bytes32) {
         return addressToNin[_addr];
     }
@@ -39,38 +34,27 @@ contract MockRegistry is IRegistry {
     function registeredVoter(bytes32 _ninHash) external view returns (RegisteredVoter memory) {
         return voters[_ninHash];
     }
-    
-    // Increment Voter Streak
+
     function incrementVoterStreak(address _voter) external {
-        if (shouldFailIncrement) {
-            revert("Registry Increment Failed");
-        }
-        bytes32 nin = addressToNin[_voter];
-        voters[nin].voterStreak++;
+        if (shouldFailIncrement) revert("Registry increment failed");
+        voters[addressToNin[_voter]].voterStreak++;
     }
 
-    // Setter for resets
-    function setVoterStreak(address _voter, uint256 _num) external {
-        if (shouldFailSet) {
-            revert("Registry Set Failed");
-        }
-        bytes32 nin = addressToNin[_voter];
-        voters[nin].voterStreak = _num;
+    function resetVoterStreak(address _voter) external {
+        if (shouldFailReset) revert("Registry reset failed");
+        voters[addressToNin[_voter]].voterStreak = 0;
     }
 }
 
 contract MockBadge is IDemocracyBadge {
+
     mapping(address => uint256) public balances;
     bool public shouldFailMint;
 
-    function setShouldFail(bool _status) external {
-        shouldFailMint = _status;
-    }
-    
+    function setShouldFailMint(bool _v) external { shouldFailMint = _v; }
+
     function mintDemocracyBadge(address to) external {
-        if (shouldFailMint) {
-            revert("Mint Failed");
-        }
+        if (shouldFailMint) revert("Mint failed");
         balances[to]++;
     }
 
@@ -80,390 +64,70 @@ contract MockBadge is IDemocracyBadge {
 }
 
 contract MockElectionBody is IElectionBody {
-    function isPartyRegistered(string memory _partyName) external pure returns (bool) {
-        // "INVALID" is a party that doesn't exist
-        return keccak256(abi.encodePacked(_partyName)) != keccak256(abi.encodePacked("INVALID"));
+
+    uint256 private _electionId = 1;
+
+    // Lets tests simulate advancing the election cycle
+    function setElectionId(uint256 _id) external { _electionId = _id; }
+
+    function electionId() external view returns (uint256) {
+        return _electionId;
     }
 
-    function getPartyCandidate(string memory _partyName, uint256) external pure returns (PartyCandidate memory) {
-        // Simulate a party having no candidate
-        if (keccak256(abi.encodePacked(_partyName)) == keccak256(abi.encodePacked("EMPTY_PARTY"))) {
-            return PartyCandidate({partyName: _partyName, candidateName: ""});
+    function isPartyRegistered(string memory _partyAcronym, uint256 /*_electionId*/) external pure returns (bool) {
+        // "INVALID" simulates an unregistered party
+        return keccak256(abi.encodePacked(_partyAcronym)) != keccak256(abi.encodePacked("INVALID"));
+    }
+
+    function getPartyCandidate(string memory _partyAcronym, uint256 /*_electionId*/) external pure returns (CandidateStruct memory) {
+        // "EMPTY_PARTY" simulates a registered party with no candidate yet
+        if (keccak256(abi.encodePacked(_partyAcronym)) == keccak256(abi.encodePacked("EMPTY_PARTY"))) {
+            return CandidateStruct({ PartyId: 0, Name: "", PartyAcronym: _partyAcronym, Address: address(0) });
         }
-        
-        return PartyCandidate({
-            partyName: _partyName,
-            candidateName: "Valid Candidate"
+        return CandidateStruct({
+            PartyId:      1,
+            Name:         "Valid Candidate",
+            PartyAcronym: _partyAcronym,
+            Address:      address(0x1)
         });
     }
 }
 
-// 2. COMPREHENSIVE TEST SUITE
+// TEST SUITE
 
 contract ElectionTest is Test {
+
     Election election;
     MockRegistry registry;
     MockBadge badge;
     MockElectionBody electionBody;
 
-    address admin = address(1);
-    address officer = address(2);
-    address voter1 = address(3);
-    address voter2 = address(4);
-    address voter3 = address(5);
-    address nonVoter = address(6);
+    address admin    = address(1);
+    address officer  = address(2);
+    address voter1   = address(3);  // fresh voter, streak 0
+    address voter2   = address(4);  // streak 2, ready for badge
+    address voter3   = address(5);  // standard voter
+    address nonVoter = address(6);  // not in registry
 
     bytes32 voter1Nin = keccak256("NIN1");
     bytes32 voter2Nin = keccak256("NIN2");
     bytes32 voter3Nin = keccak256("NIN3");
 
+    // SETUP
+
     function setUp() public {
-        // Deploy Mocks
-        registry = new MockRegistry();
-        badge = new MockBadge();
+        registry     = new MockRegistry();
+        badge        = new MockBadge();
         electionBody = new MockElectionBody();
 
-        // Deploy Election
         vm.startPrank(admin);
         election = new Election(address(registry), address(badge), address(electionBody));
-        
-        // Grant Role
-        bytes32 officerRole = election.ELECTION_OFFICER_ROLE();
-        election.grantRole(officerRole, officer);
+        election.grantRole(election.ELECTION_OFFICER_ROLE(), officer);
         vm.stopPrank();
 
-        // Register Voters in Mock Registry
-        // Voter 1: New voter
-        registry.setVoter(voter1, voter1Nin, true, 0); 
-        // Voter 2: Streak 2 (Ready for Badge)
-        registry.setVoter(voter2, voter2Nin, true, 2); 
-        // Voter 3: Standard voter
-        registry.setVoter(voter3, voter3Nin, true, 0); 
-    }
-
-    // SECTION A: ELECTION CREATION
-
-    function test_CreateElection_Success() public {
-        vm.startPrank(officer);
-        string[] memory parties = new string[](2);
-        parties[0] = "PDP";
-        parties[1] = "APC";
-        
-        election.createElection("Test Election", 24, parties);
-        
-        (string memory name, , , bool isActive, ) = election.electionDetails(1);
-        assertEq(name, "Test Election");
-        assertTrue(isActive);
-        vm.stopPrank();
-    }
-
-    function test_CreateElection_Fail_Unauthorized() public {
-        vm.prank(voter1);
-        string[] memory parties = new string[](1);
-        parties[0] = "APC";
-        
-        vm.expectRevert(); 
-        election.createElection("Fake", 24, parties);
-    }
-
-    function test_CreateElection_Fail_NoParties() public {
-        vm.startPrank(officer);
-        string[] memory parties = new string[](0);
-        
-        vm.expectRevert("No parties provided");
-        election.createElection("Fail", 24, parties);
-        vm.stopPrank();
-    }
-
-    function test_CreateElection_Fail_InvalidParty() public {
-        vm.startPrank(officer);
-        string[] memory parties = new string[](1);
-        parties[0] = "INVALID"; 
-        
-        vm.expectRevert("Party not registered globally");
-        election.createElection("Fail", 24, parties);
-        vm.stopPrank();
-    }
-
-    // SECTION B: SELF-ACCREDITATION
-
-    function test_AccreditMyself_Success() public {
-        _createStandardElection();
-        
-        vm.prank(voter1);
-        election.accreditMyself();
-        
-        bool isAccredited = election.isAccreditedForElection(1, voter1);
-        assertTrue(isAccredited);
-    }
-
-    function test_AccreditMyself_Fail_NoActiveElection() public {
-        // No election created yet
-        vm.prank(voter1);
-        vm.expectRevert("No active election");
-        election.accreditMyself();
-    }
-
-    function test_AccreditMyself_Fail_ElectionEnded() public {
-        _createStandardElection();
-        
-        // Fast forward to end
-        vm.warp(block.timestamp + 25 hours);
-        vm.prank(officer);
-        election.endElection(1);
-
-        vm.prank(voter1);
-        vm.expectRevert("Election ended");
-        election.accreditMyself();
-    }
-
-    function test_AccreditMyself_Fail_NotLinked() public {
-        _createStandardElection();
-        
-        vm.prank(nonVoter); // Address 6 is not in MockRegistry
-        vm.expectRevert("Address not linked to NIN");
-        election.accreditMyself();
-    }
-
-    function test_AccreditMyself_Fail_NotRegistered() public {
-        _createStandardElection();
-        
-        // Add user to map, but set isRegistered = false
-        registry.setVoter(nonVoter, keccak256("NIN99"), false, 0);
-
-        vm.prank(nonVoter);
-        vm.expectRevert("You are not a registered voter");
-        election.accreditMyself();
-    }
-
-    function test_AccreditMyself_Fail_AlreadyAccredited() public {
-        _createStandardElection();
-        
-        vm.startPrank(voter1);
-        election.accreditMyself();
-        
-        vm.expectRevert("Already accredited for this election");
-        election.accreditMyself();
-        vm.stopPrank();
-    }
-
-    // VOTING MECHANICS
-
-    function test_Vote_Success() public {
-        _createStandardElection();
-        _accreditSelf(voter1);
-
-        vm.prank(voter1);
-        election.vote(1, "APC");
-
-        assertEq(election.voteCounts(1, "APC"), 1);
-        assertTrue(election.hasVoted(1, voter1));
-    }
-
-    function test_Vote_Fail_DoubleVoting() public {
-        _createStandardElection();
-        _accreditSelf(voter1);
-
-        vm.startPrank(voter1);
-        election.vote(1, "APC");
-        
-        vm.expectRevert("Already voted");
-        election.vote(1, "APC");
-        vm.stopPrank();
-    }
-
-    function test_Vote_Fail_NotAccredited() public {
-        _createStandardElection();
-        // Skip accreditation
-        
-        vm.prank(voter1);
-        vm.expectRevert("Not Accredited");
-        election.vote(1, "APC");
-    }
-
-    function test_Vote_Fail_InvalidCandidate() public {
-        vm.startPrank(officer);
-        string[] memory parties = new string[](1);
-        parties[0] = "EMPTY_PARTY"; // Mock returns empty candidate name
-        election.createElection("Empty", 24, parties);
-        vm.stopPrank();
-
-        _accreditSelf(voter1);
-
-        vm.prank(voter1);
-        vm.expectRevert("Party invalid");
-        election.vote(1, "EMPTY_PARTY");
-    }
-
-    // STREAKS & BADGES
-
-    function test_Streak_Increments() public {
-        _createStandardElection();
-        _accreditSelf(voter1); // Start streak 0
-
-        vm.prank(voter1);
-        election.vote(1, "APC");
-
-        // Verify Mock Registry was updated to 1
-        IRegistry.RegisteredVoter memory v = registry.registeredVoter(voter1Nin);
-        assertEq(v.voterStreak, 1);
-    }
-
-    function test_Badge_Minting_At_Threshold() public {
-        // Voter2 starts with streak 2. Voting now should hit 3 and mint badge.
-        _createStandardElection();
-        _accreditSelf(voter2);
-
-        vm.prank(voter2);
-        vm.expectEmit(true, false, false, false);
-        emit Election.DemocracyBadgeAwarded(voter2);
-        election.vote(1, "APC");
-
-        // Verify Badge Balance
-        assertEq(badge.balanceOf(voter2), 1);
-    }
-
-    function test_Streak_Reset_On_Missed_Election() public {
-        // 1. Create Election 1
-        _createStandardElection(); // ID 1
-        _accreditSelf(voter1);
-        vm.prank(voter1);
-        election.vote(1, "APC"); // Streak -> 1
-        
-        // 2. Create Election 2 (User skips this)
-        vm.prank(officer);
-        string[] memory parties = new string[](1);
-        parties[0] = "APC";
-        election.createElection("Election 2", 24, parties); // ID 2
-        
-        // 3. Create Election 3
-        vm.prank(officer);
-        election.createElection("Election 3", 24, parties); // ID 3
-        
-        _accreditSelf(voter1); // Accredit for 3
-        
-        // 4. Vote in Election 3 (Should detect missed #2)
-        vm.prank(voter1);
-        
-        vm.expectEmit(true, false, false, false);
-        emit Election.StreakReset(voter1); // Expect Reset Event
-        
-        election.vote(3, "APC");
-
-        // Registry should show streak 1 because we called setVoterStreak(1)
-        IRegistry.RegisteredVoter memory v = registry.registeredVoter(voter1Nin);
-        assertEq(v.voterStreak, 1);
-    }
-
-    // TRY/CATCH COVERAGE
-
-    function test_Vote_SilentFail_If_RegistryIncrementFails() public {
-        _createStandardElection();
-        _accreditSelf(voter1);
-
-        registry.setShouldFailIncrement(true);
-
-        vm.prank(voter1);
-        // Should NOT revert
-        election.vote(1, "APC");
-        
-        // Vote counted locally
-        assertEq(election.voteCounts(1, "APC"), 1);
-        // Streak NOT updated (remains 0)
-        IRegistry.RegisteredVoter memory v = registry.registeredVoter(voter1Nin);
-        assertEq(v.voterStreak, 0);
-    }
-
-    function test_Vote_SilentFail_If_RegistrySetFails() public {
-        // Setup missed election scenario
-        _createStandardElection(); 
-        _accreditSelf(voter1);
-        vm.prank(voter1); election.vote(1, "APC"); // Voted in 1
-
-        // Skip 2
-        vm.prank(officer);
-        string[] memory parties = new string[](1);
-        parties[0] = "APC";
-        election.createElection("Election 2", 24, parties);
-
-        // Vote in 3
-        vm.prank(officer);
-        election.createElection("Election 3", 24, parties);
-        _accreditSelf(voter1);
-
-        registry.setShouldFailSet(true); // Reset will fail
-
-        vm.prank(voter1);
-        // Should NOT revert
-        election.vote(3, "APC");
-        
-        // Vote counted
-        assertEq(election.voteCounts(3, "APC"), 1);
-    }
-
-    function test_Vote_SilentFail_If_MintingFails() public {
-        _createStandardElection();
-        _accreditSelf(voter2); // Streak 2
-
-        badge.setShouldFail(true);
-
-        vm.prank(voter2);
-        election.vote(1, "APC");
-
-        assertEq(badge.balanceOf(voter2), 0); // Mint failed
-        assertEq(election.voteCounts(1, "APC"), 1); // Vote succeeded
-    }
-
-    // SECTION E: RESULTS & TIES
-
-    function test_EndElection_ClearWinner() public {
-        _createStandardElection();
-        _accreditSelf(voter1);
-        _accreditSelf(voter2);
-        _accreditSelf(voter3);
-
-        vm.prank(voter1); election.vote(1, "APC");
-        vm.prank(voter2); election.vote(1, "APC");
-        vm.prank(voter3); election.vote(1, "PDP");
-
-        vm.warp(block.timestamp + 25 hours);
-
-        vm.prank(officer);
-        // Expecting winner="APC", votes=2, isTie=false
-        vm.expectEmit(true, false, false, true);
-        emit Election.ElectionEnded(1, "APC", 2, false);
-        
-        election.endElection(1);
-    }
-
-    function test_EndElection_Tie() public {
-        _createStandardElection();
-        _accreditSelf(voter1);
-        _accreditSelf(voter2);
-
-        vm.prank(voter1); election.vote(1, "APC");
-        vm.prank(voter2); election.vote(1, "PDP");
-
-        vm.warp(block.timestamp + 25 hours);
-        vm.prank(officer);
-        
-        // Expecting winner="No Winner (Tie)", votes=1, isTie=true
-        vm.expectEmit(true, false, false, true);
-        emit Election.ElectionEnded(1, "No Winner (Tie)", 1, true);
-        
-        election.endElection(1);
-    }
-
-    function test_EndElection_NoVotes() public {
-        _createStandardElection();
-        vm.warp(block.timestamp + 25 hours);
-        
-        vm.prank(officer);
-        // Expecting winner="No Votes", votes=0, isTie=false
-        vm.expectEmit(true, false, false, true);
-        emit Election.ElectionEnded(1, "No Votes", 0, false);
-        
-        election.endElection(1);
+        registry.setVoter(voter1, voter1Nin, true, 0);
+        registry.setVoter(voter2, voter2Nin, true, 2);
+        registry.setVoter(voter3, voter3Nin, true, 0);
     }
 
     // HELPERS
@@ -477,8 +141,422 @@ contract ElectionTest is Test {
         vm.stopPrank();
     }
 
-    function _accreditSelf(address _voter) internal {
+    function _accredit(address _voter) internal {
         vm.prank(_voter);
         election.accreditMyself();
+    }
+
+    // ELECTION CREATION
+
+    function test_createElection_success() public {
+        _createStandardElection();
+        (string memory name,,,,bool isActive,,, ) = election.elections(1);
+        assertEq(name, "General Election");
+        assertTrue(isActive);
+        assertEq(election.electionCount(), 1);
+    }
+
+    function test_createElection_stores_electionBodyId() public {
+        _createStandardElection();
+        (, uint256 bodyId,,,,,, ) = election.elections(1);
+        assertEq(bodyId, electionBody.electionId());
+    }
+
+    function test_createElection_reverts_for_non_officer() public {
+        vm.prank(voter1);
+        string[] memory parties = new string[](1);
+        parties[0] = "APC";
+        vm.expectRevert();
+        election.createElection("Fake", 24, parties);
+    }
+
+    function test_createElection_reverts_no_parties() public {
+        vm.startPrank(officer);
+        string[] memory parties = new string[](0);
+        vm.expectRevert("No parties provided");
+        election.createElection("Empty", 24, parties);
+        vm.stopPrank();
+    }
+
+    function test_createElection_reverts_invalid_party() public {
+        vm.startPrank(officer);
+        string[] memory parties = new string[](1);
+        parties[0] = "INVALID";
+        vm.expectRevert("Party not registered for this election");
+        election.createElection("Fail", 24, parties);
+        vm.stopPrank();
+    }
+
+    function test_createElection_reverts_while_previous_active() public {
+        _createStandardElection();
+        vm.startPrank(officer);
+        string[] memory parties = new string[](1);
+        parties[0] = "APC";
+        vm.expectRevert("Previous election still active");
+        election.createElection("Second", 24, parties);
+        vm.stopPrank();
+    }
+
+    // SELF-ACCREDITATION
+
+    function test_accreditMyself_success() public {
+        _createStandardElection();
+        _accredit(voter1);
+        assertTrue(election.isAccreditedForElection(1, voter1));
+    }
+
+    function test_accreditMyself_reverts_no_election_created() public {
+        vm.prank(voter1);
+        vm.expectRevert(Election.NoActiveElection.selector);
+        election.accreditMyself();
+    }
+
+    function test_accreditMyself_reverts_election_ended() public {
+        _createStandardElection();
+        vm.warp(block.timestamp + 25 hours);
+        vm.prank(officer);
+        election.endElection(1);
+
+        vm.prank(voter1);
+        vm.expectRevert(Election.ElectionAlreadyEnded.selector);
+        election.accreditMyself();
+    }
+
+    function test_accreditMyself_reverts_not_linked_to_nin() public {
+        _createStandardElection();
+        vm.prank(nonVoter);
+        vm.expectRevert(Election.AddressNotLinkedToNIN.selector);
+        election.accreditMyself();
+    }
+
+    function test_accreditMyself_reverts_not_registered_voter() public {
+        _createStandardElection();
+        registry.setVoter(nonVoter, keccak256("NIN99"), false, 0);
+        vm.prank(nonVoter);
+        vm.expectRevert(Election.NotARegisteredVoter.selector);
+        election.accreditMyself();
+    }
+
+    function test_accreditMyself_reverts_already_accredited() public {
+        _createStandardElection();
+        _accredit(voter1);
+        vm.prank(voter1);
+        vm.expectRevert(Election.AlreadyAccredited.selector);
+        election.accreditMyself();
+    }
+
+    // VOTING
+
+    function test_vote_success() public {
+        _createStandardElection();
+        _accredit(voter1);
+        vm.prank(voter1);
+        election.vote(1, "APC");
+        assertEq(election.voteCounts(1, "APC"), 1);
+        assertTrue(election.hasVoted(1, voter1));
+    }
+
+    function test_vote_reverts_not_accredited() public {
+        _createStandardElection();
+        vm.prank(voter1);
+        vm.expectRevert(Election.NotAccredited.selector);
+        election.vote(1, "APC");
+    }
+
+    function test_vote_reverts_double_voting() public {
+        _createStandardElection();
+        _accredit(voter1);
+        vm.startPrank(voter1);
+        election.vote(1, "APC");
+        vm.expectRevert(Election.AlreadyVoted.selector);
+        election.vote(1, "APC");
+        vm.stopPrank();
+    }
+
+    function test_vote_reverts_party_not_in_election() public {
+        _createStandardElection();
+        _accredit(voter1);
+        vm.prank(voter1);
+        vm.expectRevert("Party not in this election");
+        election.vote(1, "LP"); // LP was not added to this election
+    }
+
+    function test_vote_reverts_no_candidate_for_party() public {
+        // Create an election with EMPTY_PARTY (registered but no candidate)
+        vm.startPrank(officer);
+        string[] memory parties = new string[](1);
+        parties[0] = "EMPTY_PARTY";
+        election.createElection("Empty Candidate Election", 24, parties);
+        vm.stopPrank();
+
+        _accredit(voter1);
+        vm.prank(voter1);
+        vm.expectRevert(Election.NoCandidateForParty.selector);
+        election.vote(1, "EMPTY_PARTY");
+    }
+
+    function test_vote_reverts_election_not_active() public {
+        _createStandardElection();
+        _accredit(voter1);
+        vm.warp(block.timestamp + 25 hours);
+        vm.prank(officer);
+        election.endElection(1);
+
+        vm.prank(voter1);
+        vm.expectRevert(Election.ElectionNotActive.selector);
+        election.vote(1, "APC");
+    }
+
+    // STREAKS & BADGES
+
+    function test_streak_increments_on_vote() public {
+        _createStandardElection();
+        _accredit(voter1);
+        vm.prank(voter1);
+        election.vote(1, "APC");
+        IRegistry.RegisteredVoter memory v = registry.registeredVoter(voter1Nin);
+        assertEq(v.voterStreak, 1);
+    }
+
+    function test_badge_minted_at_threshold() public {
+        _createStandardElection();
+        _accredit(voter2); // voter2 has streak 2
+
+        vm.prank(voter2);
+        vm.expectEmit(true, false, false, false);
+        emit Election.DemocracyBadgeAwarded(voter2);
+        election.vote(1, "APC");
+
+        assertEq(badge.balanceOf(voter2), 1);
+    }
+
+    function test_badge_not_minted_twice() public {
+        _createStandardElection();
+        _accredit(voter2);
+        vm.prank(voter2);
+        election.vote(1, "APC");
+        assertEq(badge.balanceOf(voter2), 1);
+
+        // Manually bump streak to 5 (threshold - 1 again relative to 6)
+        // Simulate a second election to check badge is not re-minted
+        vm.warp(block.timestamp + 25 hours);
+        vm.prank(officer);
+        election.endElection(1);
+
+        electionBody.setElectionId(2);
+        vm.startPrank(officer);
+        string[] memory parties = new string[](1);
+        parties[0] = "APC";
+        election.createElection("Election 2", 24, parties);
+        vm.stopPrank();
+
+        _accredit(voter2);
+        vm.prank(voter2);
+        election.vote(2, "APC");
+
+        // Badge balance must still be 1 (not minted again below threshold)
+        assertEq(badge.balanceOf(voter2), 1);
+    }
+
+    function test_streak_reset_on_missed_election() public {
+        // Election 1 — voter1 votes
+        _createStandardElection();
+        _accredit(voter1);
+        vm.prank(voter1);
+        election.vote(1, "APC"); // streak -> 1
+
+        // End election 1
+        vm.warp(block.timestamp + 25 hours);
+        vm.prank(officer);
+        election.endElection(1);
+
+        // Election 2 — voter1 skips
+        electionBody.setElectionId(2);
+        vm.startPrank(officer);
+        string[] memory parties = new string[](1);
+        parties[0] = "APC";
+        election.createElection("Election 2", 24, parties);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 25 hours);
+        vm.prank(officer);
+        election.endElection(2);
+
+        // Election 3 — voter1 votes again (missed election 2)
+        electionBody.setElectionId(3);
+        vm.startPrank(officer);
+        election.createElection("Election 3", 24, parties);
+        vm.stopPrank();
+
+        _accredit(voter1);
+        vm.prank(voter1);
+        vm.expectEmit(true, false, false, false);
+        emit Election.StreakReset(voter1);
+        election.vote(3, "APC");
+
+        // Streak should be 1: reset to 0 then incremented for this vote
+        IRegistry.RegisteredVoter memory v = registry.registeredVoter(voter1Nin);
+        assertEq(v.voterStreak, 1);
+    }
+
+    //  TRY/CATCH SILENT FAILURES
+
+    function test_vote_succeeds_if_registry_increment_fails() public {
+        _createStandardElection();
+        _accredit(voter1);
+        registry.setShouldFailIncrement(true);
+
+        vm.prank(voter1);
+        election.vote(1, "APC"); // must not revert
+
+        assertEq(election.voteCounts(1, "APC"), 1);
+        // Streak not updated
+        IRegistry.RegisteredVoter memory v = registry.registeredVoter(voter1Nin);
+        assertEq(v.voterStreak, 0);
+    }
+
+    function test_vote_succeeds_if_registry_reset_fails() public {
+        // Setup: vote in election 1
+        _createStandardElection();
+        _accredit(voter1);
+        vm.prank(voter1);
+        election.vote(1, "APC");
+
+        vm.warp(block.timestamp + 25 hours);
+        vm.prank(officer);
+        election.endElection(1);
+
+        // Skip election 2
+        electionBody.setElectionId(2);
+        vm.startPrank(officer);
+        string[] memory parties = new string[](1);
+        parties[0] = "APC";
+        election.createElection("Election 2", 24, parties);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 25 hours);
+        vm.prank(officer);
+        election.endElection(2);
+
+        // Election 3 — reset will fail
+        electionBody.setElectionId(3);
+        vm.startPrank(officer);
+        election.createElection("Election 3", 24, parties);
+        vm.stopPrank();
+
+        _accredit(voter1);
+        registry.setShouldFailReset(true);
+
+        vm.prank(voter1);
+        election.vote(3, "APC"); // must not revert
+
+        assertEq(election.voteCounts(3, "APC"), 1);
+    }
+
+    function test_vote_succeeds_if_badge_mint_fails() public {
+        _createStandardElection();
+        _accredit(voter2); // streak 2
+        badge.setShouldFailMint(true);
+
+        vm.prank(voter2);
+        election.vote(1, "APC"); // must not revert
+
+        assertEq(badge.balanceOf(voter2), 0); // mint silently failed
+        assertEq(election.voteCounts(1, "APC"), 1);
+    }
+
+    // END ELECTION & RESULTS
+
+    function test_endElection_clear_winner() public {
+        _createStandardElection();
+        _accredit(voter1);
+        _accredit(voter2);
+        _accredit(voter3);
+
+        vm.prank(voter1); election.vote(1, "APC");
+        vm.prank(voter2); election.vote(1, "APC");
+        vm.prank(voter3); election.vote(1, "PDP");
+
+        vm.warp(block.timestamp + 25 hours);
+        vm.prank(officer);
+        vm.expectEmit(true, false, false, true);
+        emit Election.ElectionEnded(1, "APC", 2, false);
+        election.endElection(1);
+
+        (string memory winner, bool isTie) = election.getElectionResult(1);
+        assertEq(winner, "APC");
+        assertFalse(isTie);
+    }
+
+    function test_endElection_tie() public {
+        _createStandardElection();
+        _accredit(voter1);
+        _accredit(voter2);
+
+        vm.prank(voter1); election.vote(1, "APC");
+        vm.prank(voter2); election.vote(1, "PDP");
+
+        vm.warp(block.timestamp + 25 hours);
+        vm.prank(officer);
+        vm.expectEmit(true, false, false, true);
+        emit Election.ElectionEnded(1, "No Winner (Tie)", 1, true);
+        election.endElection(1);
+
+        (string memory winner, bool isTie) = election.getElectionResult(1);
+        assertEq(winner, "No Winner (Tie)");
+        assertTrue(isTie);
+    }
+
+    function test_endElection_no_votes() public {
+        _createStandardElection();
+        vm.warp(block.timestamp + 25 hours);
+        vm.prank(officer);
+        vm.expectEmit(true, false, false, true);
+        emit Election.ElectionEnded(1, "No Votes", 0, false);
+        election.endElection(1);
+
+        (string memory winner, bool isTie) = election.getElectionResult(1);
+        assertEq(winner, "No Votes");
+        assertFalse(isTie);
+    }
+
+    function test_endElection_reverts_time_not_passed() public {
+        _createStandardElection();
+        vm.prank(officer);
+        vm.expectRevert(Election.ElectionTimeNotPassed.selector);
+        election.endElection(1);
+    }
+
+    function test_endElection_reverts_for_non_officer() public {
+        _createStandardElection();
+        vm.warp(block.timestamp + 25 hours);
+        vm.prank(voter1);
+        vm.expectRevert();
+        election.endElection(1);
+    }
+
+    function test_endElection_reverts_already_ended() public {
+        _createStandardElection();
+        vm.warp(block.timestamp + 25 hours);
+        vm.prank(officer);
+        election.endElection(1);
+
+        vm.prank(officer);
+        vm.expectRevert(Election.ElectionNotActive.selector);
+        election.endElection(1);
+    }
+
+    function test_getElectionResult_returns_winner_on_chain() public {
+        _createStandardElection();
+        _accredit(voter1);
+        vm.prank(voter1);
+        election.vote(1, "PDP");
+
+        vm.warp(block.timestamp + 25 hours);
+        vm.prank(officer);
+        election.endElection(1);
+
+        (string memory winner,) = election.getElectionResult(1);
+        assertEq(winner, "PDP");
     }
 }

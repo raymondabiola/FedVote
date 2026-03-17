@@ -53,14 +53,17 @@ contract VoterIncentives is Ownable, ReentrancyGuard {
 
 // Set Parameter functions
     function updateDemocracyBadgeCA(address _newDemocracyBadgeAddr) external onlyOwner{
+         if (_newDemocracyBadgeAddr == address(0)) revert InvalidAddress();
         democracyBadge = DemocracyBadge(_newDemocracyBadgeAddr);
     }
 
     function updateNationalTokenCA(address _newNationalTokenAddr) external onlyOwner{
+          if (_newNationalTokenAddr == address(0)) revert InvalidAddress();
         nationalToken = NationalToken(_newNationalTokenAddr);
     }
 
     function updateRegistryCA(address _newRegistryAddr) external onlyOwner{
+          if (_newRegistryAddr == address(0)) revert InvalidAddress();
         registry = Registry(_newRegistryAddr);
     }
 
@@ -91,7 +94,7 @@ contract VoterIncentives is Ownable, ReentrancyGuard {
         bool claimedAllIncentives = true;
 
         for (uint i = 3; i <= voterStreak; i += 3) {
-            if (!hasClaimedIncentives[msg.sender][i]) {
+            if (!hasClaimedIncentives[_address][i]) {
                 claimedAllIncentives = false;
                 break;
             }

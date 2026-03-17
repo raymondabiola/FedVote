@@ -71,6 +71,7 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
     mapping(uint256 => ElectionDetails) public elections;
     mapping(bytes32 => bool) private memberExists;
     mapping(address => bool) public hasPaidForCandidacy;
+    mapping(address => mapping(uint => bool)) public isCandidateForElection;
 
     address[] public memberAddresses;
 
@@ -83,6 +84,7 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
     error InvalidCandidateID();
     error AlreadyVoted();
     error InvalidAmount();
+    error InvalidAddress();
     error CallerMustBeAnEOA();
     error CandidateNotRegistered();
     error NotPaidForCandidacy();
@@ -94,6 +96,10 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
     error ElectionIsOngoing();
     error NotAuthorizedCitizen();
     error AlreadyAMemberOfAParty();
+    error InsufficientContractBal();
+    error NotAMember();
+    error ElectionDoesNotExist();
+    error AlreadyACandidateForThisElection(uint electionId);
 
     function setElectionId() external onlyRole(DEFAULT_ADMIN_ROLE) {
         electionId = electionBody.getElectionId();
@@ -142,9 +148,8 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
             revert CallerMustBeAnEOA();
         }
 
-        nationalToken.transferFrom(msg.sender, address(this), _fee);
-
         members[msg.sender].hasPaidForMembership = true;
+        nationalToken.transferFrom(msg.sender, address(this), _fee);
     }
 
     function registerMember(string memory _name, uint256 _nin) external {
@@ -188,6 +193,7 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
     }
 
     function removeMember(address _memberAddress, uint256 _nin) external onlyRole(PARTY_LEADER) {
+        if(!hasRole(MEMBER_ROLE, _memberAddress)) revert NotAMember();
         delete members[_memberAddress];
 
         _revokeRole(MEMBER_ROLE, _memberAddress);
@@ -205,19 +211,19 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
         emit MemberRemoved(_memberAddress);
     }
 
-    function payForCandidateship() external nonReentrant onlyRole(MEMBER_ROLE) {
+    function payForCandidateship() external onlyRole(MEMBER_ROLE) nonReentrant{
         uint256 _fee = candidacyFee;
 
         if (hasPaidForCandidacy[msg.sender]) {
             revert AlreadyPaidForCandidacy();
         }
-
-        nationalToken.transferFrom(msg.sender, address(this), _fee);
-
+        
         hasPaidForCandidacy[msg.sender] = true;
+        nationalToken.transferFrom(msg.sender, address(this), _fee);
     }
 
     function registerCandidate(string memory _name, uint _nin) external onlyRole(MEMBER_ROLE) {
+        if(isCandidateForElection[msg.sender][electionId]) revert AlreadyACandidateForThisElection(electionId);
         if (!hasPaidForCandidacy[msg.sender]) {
             revert NotPaidForCandidacy();
         }
@@ -250,6 +256,7 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
                 walletAddress: msg.sender
             })
         );
+        isCandidateForElection[msg.sender][electionId] = true;
     }
 
     function removeCandidate(uint256 _electionId, uint256 _candidateId, address _walletAddress)
@@ -279,10 +286,11 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
     }
 
     function voteforPrimaryElection(uint256 _candidateId, uint256 _electionId) external onlyRole(MEMBER_ROLE) {
+        if(!electionBody.checkIfElectionExist(_electionId)) revert ElectionDoesNotExist();
         Member storage voter = members[msg.sender];
         Candidate storage candidate = candidates[_electionId][_candidateId - 1];
 
-        if (block.timestamp > elections[electionId].endTime) {
+        if (block.timestamp > elections[_electionId].endTime) {
             revert ElectionEnded();
         }
 
@@ -334,6 +342,13 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
         electionBody.setCandidate(_electionId, winner.name, winner.party, winner.walletAddress);
     }
 
+    function withdraw(address _to, uint _amount) external onlyRole(DEFAULT_ADMIN_ROLE) nonReentrant{
+        if(_to == address(0)) revert InvalidAddress();
+        if(_amount == 0) revert InvalidAmount();
+        if(_amount > nationalToken.balanceOf(address(this))) revert InsufficientContractBal();
+        nationalToken.transfer(_to, _amount);
+    }
+
     // VIEW FUNCTIONS
 
     function getPartyMember(address _walletAddress) external view returns (Member memory) {
@@ -341,7 +356,7 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
     }
 
     function getPartyCandidate(uint _electionId, uint _candidateId) external view returns (Candidate memory) {
-        return candidates[electionId][_candidateId - 1];
+        return candidates[_electionId][_candidateId - 1];
     }
 
     function getAllPartyMembers() external view returns (Member[] memory) {
@@ -359,6 +374,6 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
     }
 
     function checkElectionStatus(uint _electionId) external view returns (ElectionDetails memory) {
-        return elections[electionId];
+        return elections[_electionId];
     }
 }

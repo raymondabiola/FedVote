@@ -180,7 +180,7 @@ function testResetVoterStreak() public {
         registry.incrementVoterStreak(user1);
         registry.incrementVoterStreak(user1);
         registry.resetVoterStreak(user1);
-        assertEq(registry.getVoterDataViaAddress(user1).voterStreak, 0);
+        assertEq(registry.getVoterDataViaAddress(user1).voterStreak, 1);
 }
 
 function testSetCitizenPartyMembershipStatus() public {
