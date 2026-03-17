@@ -21,36 +21,55 @@ contract DeployScript is Script {
 
     uint baseIncentives = 1000e18;
 
-    uint256 electionsOfficerPrivateKey = vm.envUint("ELECTIONS_OFFICER_PRIVATE_KEY");
-    address electionsOfficerAddress = vm.addr(electionsOfficerPrivateKey);
+    uint256 deployerPrivateKey;
+    address deployerAddress;
 
-    uint256 centralBankPrivateKey = vm.envUint("CENTRAL_BANK_PRIVATE_KEY");
-    address centralBankAddress = vm.addr(centralBankPrivateKey);
+    uint256 centralBankPrivateKey;
+    address centralBankAddress;
 
-    uint256 partyAChairmanPrivateKey = vm.envUint("PARTYA_CHAIRMAN_PKEY");
-    address partyAChairmanAddress = vm.addr(partyAChairmanPrivateKey);
+    uint256 partyAChairmanPrivateKey;
+    address partyAChairmanAddress;
 
-    uint256 partyBChairmanPrivateKey = vm.envUint("PARTYB_CHAIRMAN_PKEY");
-    address partyBChairmanAddress = vm.addr(partyBChairmanPrivateKey);
+    uint256 partyBChairmanPrivateKey;
+    address partyBChairmanAddress;
 
-    uint256 partyCChairmanPrivateKey = vm.envUint("PARTYC_CHAIRMAN_PKEY");
-    address partyCChairmanAddress = vm.addr(partyCChairmanPrivateKey);
+    uint256 partyCChairmanPrivateKey;
+    address partyCChairmanAddress;
 
     function run() external {
-        vm.startBroadcast(centralBankPrivateKey);
+
+        deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
+        deployerAddress = vm.addr(deployerPrivateKey);
+
+        centralBankPrivateKey = vm.envUint("CENTRAL_BANK_PRIVATE_KEY");
+        centralBankAddress = vm.addr(centralBankPrivateKey);
+
+        partyAChairmanPrivateKey = vm.envUint("PARTYA_CHAIRMAN_PKEY");
+        partyAChairmanAddress = vm.addr(partyAChairmanPrivateKey);
+
+        partyBChairmanPrivateKey = vm.envUint("PARTYB_CHAIRMAN_PKEY");
+        partyBChairmanAddress = vm.addr(partyBChairmanPrivateKey);
+
+        partyCChairmanPrivateKey = vm.envUint("PARTYC_CHAIRMAN_PKEY");
+        partyCChairmanAddress = vm.addr(partyCChairmanPrivateKey);
+
+        vm.startBroadcast(deployerPrivateKey);
         deployNationalTokenContract();
         vm.stopBroadcast();
 
-        vm.startBroadcast(electionsOfficerPrivateKey);
+        vm.startBroadcast(deployerPrivateKey);
         deployElectionsRelatedContracts();
         vm.stopBroadcast();
 
-        vm.startBroadcast(centralBankPrivateKey);
+        vm.startBroadcast(deployerPrivateKey);
         deployVoterIncentivesContract();
+        vm.stopBroadcast();
+
+        vm.startBroadcast(centralBankPrivateKey);
         grantTokenRelatedContractRoles();
         vm.stopBroadcast();
 
-        vm.startBroadcast(electionsOfficerPrivateKey);
+        vm.startBroadcast(deployerPrivateKey);
         createPartiesFromFactory();
         grantElectionsRelatedContractRoles();
         nationalElectionBody.setElectionId(1);
