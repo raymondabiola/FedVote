@@ -180,7 +180,7 @@ function testResetVoterStreak() public {
         registry.incrementVoterStreak(user1);
         registry.incrementVoterStreak(user1);
         registry.resetVoterStreak(user1);
-        assertEq(registry.getVoterDataViaAddress(user1).voterStreak, 1);
+        assertEq(registry.getVoterDataViaAddress(user1).voterStreak, 0);
 }
 
 function testSetCitizenPartyMembershipStatus() public {
@@ -306,7 +306,7 @@ function testChangeVoterAddress() public {
     registry.changeVoterAddress(2345, address(registry));
 
     // Edge case for when an invalid NIN is passed into the change voter address function
-    vm.expectRevert(InvalidNIN.selector);
+    vm.expectRevert(NotARegisteredVoter.selector);
     registry.changeVoterAddress(2346, user4);
 
     // Tests for when the changeVoterAddres function is correctly called

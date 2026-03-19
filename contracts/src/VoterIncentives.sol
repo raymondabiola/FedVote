@@ -96,13 +96,11 @@ contract VoterIncentives is Ownable, ReentrancyGuard {
 
         for (uint i = 3; i <= voterStreak; i += 3) {
             if (!hasClaimedIncentives[_address][i]) {
-                claimedAllIncentives = false;
-                break;
+                return true; 
             }
         }
-        if (claimedAllIncentives) revert AlreadyClaimedIncentivesForAllThreshold();
-
-        return true;
+    
+    revert AlreadyClaimedIncentivesForAllThreshold();
     }
 
 
