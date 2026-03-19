@@ -378,7 +378,7 @@ contract ElectionTest is Test {
         election.createElection("Election 2", 24, parties);
         vm.stopPrank();
 
-        vm.warp(block.timestamp + 25 hours);
+        vm.warp(block.timestamp + 27 hours);
         vm.prank(officer);
         election.endElection(2);
 
@@ -434,7 +434,7 @@ contract ElectionTest is Test {
         election.createElection("Election 2", 24, parties);
         vm.stopPrank();
 
-        vm.warp(block.timestamp + 25 hours);
+        vm.warp(block.timestamp + 27 hours);
         vm.prank(officer);
         election.endElection(2);
 

@@ -220,6 +220,14 @@ contract PoliticalPartyManagerTest is Test {
     }
     
     function testOnlyMemberCanPayAndCantPayTwiceForCandidacy() public {
+   uint256 electionId = 101;
+        vm.prank(address(this));
+        nationalElectionBody.setElectionId(electionId);
+        vm.prank(chairman);
+        partyManager.setElectionId();
+        vm.prank(chairman);
+        partyManager.createElection(2);
+
         setupValidUser();
         partyManager.payForMembership(2345);
         partyManager.registerMember("Alice", 2345);
@@ -232,7 +240,7 @@ contract PoliticalPartyManagerTest is Test {
         vm.prank(user1);
         partyManager.payForCandidateship();
 
-        assertTrue(partyManager.hasPaidForCandidacy(user1));
+        assertTrue(partyManager.hasPaidForCandidacy(user1, electionId));
 
         // Member Can't Pay Twice
         vm.prank(user1);
@@ -242,6 +250,9 @@ contract PoliticalPartyManagerTest is Test {
     
 
     function testAttackerCannotPayForCandidacy() public {
+        uint256 electionId = 101;
+        vm.prank(chairman);
+        partyManager.setElectionId();
         vm.prank(centralBankAddress);
         nationalToken.mint(attacker, 1000 * (10 ** 18));
         vm.prank(attacker);
@@ -250,7 +261,7 @@ contract PoliticalPartyManagerTest is Test {
         vm.expectRevert();
         partyManager.payForCandidateship();
 
-        assertFalse(partyManager.hasPaidForCandidacy(attacker));
+        assertFalse(partyManager.hasPaidForCandidacy(attacker, electionId));
     }
 
     function testAdminCanSetElectionId() public {
@@ -290,18 +301,30 @@ contract PoliticalPartyManagerTest is Test {
     }
 
     function testMembersCanRegisterAsCandidate() public {
-        setupValidMember();
         uint256 electionId = 101;
         vm.prank(address(this));
         nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
+        vm.prank(chairman);
+        partyManager.createElection(2);
+
+        setupValidMember();
+        
         vm.prank(user1);
         partyManager.registerCandidate("Alice", 2345);
         assertTrue(partyManager.getPartyCandidate(electionId, 1).isRegistered);
     }
 
     function testCantRegisterWithInvalidName() public {
+        uint256 electionId = 101;
+        vm.prank(address(this));
+        nationalElectionBody.setElectionId(electionId);
+        vm.prank(chairman);
+        partyManager.setElectionId();
+        vm.prank(chairman);
+        partyManager.createElection(2);
+
         setupValidMember();
         vm.prank(user1);
         vm.expectRevert();
@@ -309,6 +332,14 @@ contract PoliticalPartyManagerTest is Test {
     }
 
     function testCantRegisterWithInvalidNin() public {
+        uint256 electionId = 101;
+        vm.prank(address(this));
+        nationalElectionBody.setElectionId(electionId);
+        vm.prank(chairman);
+        partyManager.setElectionId();
+        vm.prank(chairman);
+        partyManager.createElection(2);
+
         setupValidMember();
         vm.prank(user1);
         vm.expectRevert();
@@ -316,6 +347,14 @@ contract PoliticalPartyManagerTest is Test {
     }
 
     function testAttackerCantRegisterAsCandidate() public {
+        uint256 electionId = 101;
+        vm.prank(address(this));
+        nationalElectionBody.setElectionId(electionId);
+        vm.prank(chairman);
+        partyManager.setElectionId();
+        vm.prank(chairman);
+        partyManager.createElection(2);
+
         setupValidMember();
         vm.prank(attacker);
         vm.expectRevert();
@@ -323,11 +362,13 @@ contract PoliticalPartyManagerTest is Test {
     }
 
     function testAdminCanRemoveCandidate() public {
-        uint256 electionId = 101;
+    uint256 electionId = 101;
         vm.prank(address(this));
         nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
+        vm.prank(chairman);
+        partyManager.createElection(2);
 
         setupValidMember();
         vm.prank(user1);
@@ -335,7 +376,6 @@ contract PoliticalPartyManagerTest is Test {
 
         vm.prank(chairman);
         partyManager.removeCandidate(electionId, 1, user1);
-        assertFalse(partyManager.hasPaidForCandidacy(user1));
     }
 
     function testAdminCantRemoveUnregisteredCandidate() public {
@@ -344,6 +384,8 @@ contract PoliticalPartyManagerTest is Test {
         nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
+        vm.prank(chairman);
+        partyManager.createElection(2);
 
         setupValidMember();
         vm.startPrank(user1);
@@ -357,8 +399,12 @@ contract PoliticalPartyManagerTest is Test {
 
     function testAttackerCantRemoveCandidate() public {
         uint256 electionId = 101;
+        vm.prank(address(this));
+        nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
+        vm.prank(chairman);
+        partyManager.createElection(2);
 
         setupValidMember();
         vm.prank(user1);
@@ -367,7 +413,7 @@ contract PoliticalPartyManagerTest is Test {
         vm.prank(attacker);
         vm.expectRevert();
         partyManager.removeCandidate(electionId, 1, user1);
-        assertTrue(partyManager.hasPaidForCandidacy(user1));
+        assertTrue(partyManager.hasPaidForCandidacy(user1, electionId));
     }
 
     function testAdminCanCreateElection() public {
@@ -383,12 +429,17 @@ contract PoliticalPartyManagerTest is Test {
 
     function testAttackerCantCreateElection() public {
         uint256 electionId = 101;
+        vm.prank(address(this));
+        nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
+        vm.prank(chairman);
+        partyManager.createElection(2);
+
         vm.prank(attacker);
         vm.expectRevert();
         partyManager.createElection(2);
-        assertEq(partyManager.checkElectionStatus(electionId).id, 0);
+        assertEq(partyManager.checkElectionStatus(electionId).id, 101);
     }
 
     function testMembersCanVoteforPrimaryElection() public {

@@ -12,8 +12,8 @@ contract Registry is AccessControl {
     bytes32 public constant PARTY_CONTRACT_ROLE = keccak256("PARTY_CONTRACT_ROLE");
     
     address public headOfRegistrations;
-    uint totalAuthorizedCitizens;
-    uint totalRegisteredVoters;
+    uint public totalAuthorizedCitizens;
+    uint public totalRegisteredVoters;
 
     mapping(bytes32 => bool) private isValidNIN;
     mapping(address => bool) private isValidAddress;
@@ -47,6 +47,9 @@ contract Registry is AccessControl {
     error NINNotFoundInDataBase();
     error EmptyStringInputed();
     error CitizenCannotRegisterTwice();
+    error AddressNotAuthorized(address _address);
+    error NINNotAuthorized(bytes32 _ninHash);
+    error AddressMismatch();
 
     constructor(){
         headOfRegistrations = msg.sender;
@@ -73,28 +76,48 @@ contract Registry is AccessControl {
         }
     }
 
+    function removeCitizenAuthorization(uint _nin, address _address)public onlyRole(REGISTRATION_OFFICER_ROLE){
+        if(_address == address(0)) revert ZeroAddressNotAllowed();
+        if(_address.code.length > 0) revert ContractAddressNotAllowed(_address);
+        bytes32 ninHash = getNumHash(_nin);
+        if(!isValidNIN[ninHash]) revert NINNotAuthorized(ninHash);
+        if(!isValidAddress[_address]) revert AddressNotAuthorized(_address);
+        if(validNINForAddress[_address] != ninHash) revert NINNotFoundInDataBase();
+
+        delete isValidNIN[ninHash];
+        delete isValidAddress[_address];
+        delete validNameForNIN[ninHash];
+        delete validNINForAddress[_address];
+
+        if(totalAuthorizedCitizens > 0){
+        totalAuthorizedCitizens -= 1;
+        }
+    }
+
     // Election contract should check if voter has successfully voted before calling this function
     function incrementVoterStreak(address _address) external onlyRole(ELECTIONS_CONTRACT_ROLE){
        registeredVoter[validNINForAddress[_address]].voterStreak += 1;
     }
 
     function resetVoterStreak(address _address) external onlyRole(ELECTIONS_CONTRACT_ROLE){
-       registeredVoter[validNINForAddress[_address]].voterStreak = 1;
+       registeredVoter[validNINForAddress[_address]].voterStreak = 0;
     }
     
     // Use this to check if a valid citizen does not belong to any party before they can be registered
     // Prevents citizens from registering for two political parties.
     function setCitizenPartyMembershipStatusAsTrue(uint _nin) public onlyRole(PARTY_CONTRACT_ROLE){
-        if(!isValidNIN[getNumHash(_nin)]) revert InvalidNIN();
-        if(isMemberOfAParty[getNumHash(_nin)]) revert AlreadyAPartyMember();
-        isMemberOfAParty[getNumHash(_nin)] = true;
+         bytes32 ninHash = getNumHash(_nin);
+        if(!isValidNIN[ninHash]) revert InvalidNIN();
+        if(isMemberOfAParty[ninHash]) revert AlreadyAPartyMember();
+        isMemberOfAParty[ninHash] = true;
     }
 
     // Use this when a party member needs to decamp from a party so they can register for another party
     function setCitizenPartyMembershipStatusAsFalse(uint _nin) public onlyRole(PARTY_CONTRACT_ROLE){
-        if(!isValidNIN[getNumHash(_nin)]) revert InvalidNIN();
-        if(!isMemberOfAParty[getNumHash(_nin)]) revert NotAPartyMember();
-        isMemberOfAParty[getNumHash(_nin)] = false;
+         bytes32 ninHash = getNumHash(_nin);
+        if(!isValidNIN[ninHash]) revert InvalidNIN();
+        if(!isMemberOfAParty[ninHash]) revert NotAPartyMember();
+        isMemberOfAParty[ninHash] = false;
 
     }
 
@@ -143,6 +166,18 @@ contract Registry is AccessControl {
         emit VoterRegisteredOnChain(ninHash, msg.sender, _name);
     }
 
+    function deregisterVoter(uint _nin, address _address)external onlyRole(REGISTRATION_OFFICER_ROLE){
+        bytes32 ninHash = getNumHash(_nin);
+        if(!registeredVoter[ninHash].isRegistered) revert NotARegisteredVoter();
+        if(registeredVoter[ninHash].voterAddress != _address) revert AddressMismatch();
+        removeCitizenAuthorization(_nin, _address);
+        delete registeredVoter[ninHash];
+
+        if(totalRegisteredVoters > 0){
+        totalRegisteredVoters -= 1;
+        }
+    }
+
     /* Use function in the case when a voter misplaces their private keys for oldAddress.
         The citizen must go to the voter registration office to issue a complaint and provide a new address 
         that will replace the compromised address. 
@@ -151,9 +186,11 @@ contract Registry is AccessControl {
         bytes32 ninHash = getNumHash(_nin);
         
         if(isValidAddress[_newAddress]) revert AddressAlreadyAuthorized(_newAddress);
+        if(!registeredVoter[ninHash].isRegistered) revert NotARegisteredVoter();
         if(_newAddress == address(0)) revert ZeroAddressNotAllowed();
         if(_newAddress.code.length > 0) revert ContractAddressNotAllowed(_newAddress);
         if(!isValidNIN[ninHash]) revert InvalidNIN();
+
     
         address compromisedAddress = registeredVoter[ninHash].voterAddress;
         isValidAddress[compromisedAddress] = false;
