@@ -22,7 +22,7 @@ contract NationalElectionBodyTest is Test {
     address public apcAddress  = makeAddr("apcAddress");
     address public lpAddress   = makeAddr("lpAddress");
     address public apgaAddress = makeAddr("apgaAddress");
-    address public emptyAddress = makeAddr("emptyAddress"); 
+    address public emptyAddress = makeAddr("emptyAddress");
 
     address public pdpCandidate = makeAddr("pdpCandidate");
     address public apcCandidate = makeAddr("apcCandidate");
@@ -32,7 +32,6 @@ contract NationalElectionBodyTest is Test {
     //  SETUP
 
     function setUp() public {
-        // Deploy token and mint to parties
         vm.startPrank(centralBank);
         token = new NationalToken(centralBank);
         token.mint(pdpAddress,  REGISTRATION_FEE * 10);
@@ -41,14 +40,12 @@ contract NationalElectionBodyTest is Test {
         token.mint(apgaAddress, REGISTRATION_FEE * 10);
         vm.stopPrank();
 
-        // Deploy election body, set election ID
         vm.startPrank(admin);
         electionBody = new NationalElectionBody(address(token));
         electionBody.grantRole(electionBody.PARTY_PRIMARIES_ROLE(), primaries);
         electionBody.setElectionId(1);
         vm.stopPrank();
 
-        // All parties approve max spend
         _approveMax(pdpAddress);
         _approveMax(apcAddress);
         _approveMax(lpAddress);
@@ -82,7 +79,9 @@ contract NationalElectionBodyTest is Test {
 
     function test_setElectionId_reverts_on_reuse() public {
         vm.prank(admin);
-        vm.expectRevert("ElectionId already exists");
+        vm.expectRevert(
+            abi.encodeWithSelector(NationalElectionBody.ElectionExists.selector)
+        );
         electionBody.setElectionId(1);
     }
 
@@ -97,7 +96,7 @@ contract NationalElectionBodyTest is Test {
     function test_registerParty_success() public {
         _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
 
-        uint256 partyId = electionBody.partyNameToId("PDP");
+        uint256 partyId = electionBody.partyAcronymToId("PDP");
         assertEq(partyId, 1);
 
         (uint256 id, string memory name,, string memory acronym,, NationalElectionBody.Status status) =
@@ -111,14 +110,18 @@ contract NationalElectionBodyTest is Test {
 
     function test_registerParty_reverts_wrong_election_id() public {
         vm.prank(pdpAddress);
-        vm.expectRevert(NationalElectionBody.NotCurrentElection.selector);
+        vm.expectRevert(
+            abi.encodeWithSelector(NationalElectionBody.NotCurrentElection.selector)
+        );
         electionBody.registerParty("Peoples Democratic Party", 99, "PDP");
     }
 
     function test_registerParty_reverts_duplicate_application() public {
         _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
         vm.prank(pdpAddress);
-        vm.expectRevert("Already applied for this election");
+        vm.expectRevert(
+            abi.encodeWithSelector(NationalElectionBody.AlreadyAppliedForThisElection.selector)
+        );
         electionBody.registerParty("Peoples Democratic Party", 1, "PDP");
     }
 
@@ -135,29 +138,26 @@ contract NationalElectionBodyTest is Test {
     }
 
     function test_registerParty_permanent_id_reused_across_elections() public {
-        // Election 1
         _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
-        uint256 idElection1 = electionBody.partyNameToId("PDP");
+        uint256 idElection1 = electionBody.partyAcronymToId("PDP");
 
-        // Advance to election 2
         vm.prank(admin);
         electionBody.setElectionId(2);
 
         _register(pdpAddress, "Peoples Democratic Party", 2, "PDP");
-        uint256 idElection2 = electionBody.partyNameToId("PDP");
+        uint256 idElection2 = electionBody.partyAcronymToId("PDP");
 
-        // Permanent ID must not change
         assertEq(idElection1, idElection2);
     }
 
     function test_registerParty_new_parties_get_sequential_ids() public {
-        _register(pdpAddress,  "Peoples Democratic Party",   1, "PDP");
-        _register(apcAddress,  "All Progressives Congress",  1, "APC");
-        _register(lpAddress,   "Labour Party",               1, "LP");
+        _register(pdpAddress,  "Peoples Democratic Party",  1, "PDP");
+        _register(apcAddress,  "All Progressives Congress", 1, "APC");
+        _register(lpAddress,   "Labour Party",              1, "LP");
 
-        assertEq(electionBody.partyNameToId("PDP"), 1);
-        assertEq(electionBody.partyNameToId("APC"), 2);
-        assertEq(electionBody.partyNameToId("LP"),  3);
+        assertEq(electionBody.partyAcronymToId("PDP"), 1);
+        assertEq(electionBody.partyAcronymToId("APC"), 2);
+        assertEq(electionBody.partyAcronymToId("LP"),  3);
     }
 
     //  APPROVE
@@ -166,9 +166,9 @@ contract NationalElectionBodyTest is Test {
         _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
 
         vm.prank(admin);
-        electionBody.approveAppliedParty("PDP");
+        electionBody.approveAppliedParty("PDP", 1);
 
-        uint256 partyId = electionBody.partyNameToId("PDP");
+        uint256 partyId = electionBody.partyAcronymToId("PDP");
 
         (,,,,,NationalElectionBody.Status appStatus) = electionBody.appliedParties(1, partyId);
         assertEq(uint256(appStatus), uint256(NationalElectionBody.Status.approved));
@@ -186,49 +186,46 @@ contract NationalElectionBodyTest is Test {
         _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
         vm.prank(randomUser);
         vm.expectRevert();
-        electionBody.approveAppliedParty("PDP");
+        electionBody.approveAppliedParty("PDP", 1);
     }
 
     function test_approveAppliedParty_reverts_unknown_party() public {
         vm.prank(admin);
         vm.expectRevert();
-        electionBody.approveAppliedParty("UNKNOWN");
+        electionBody.approveAppliedParty("UNKNOWN", 1);
     }
 
     function test_approveAppliedParty_reverts_already_approved() public {
         _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
         vm.prank(admin);
-        electionBody.approveAppliedParty("PDP");
+        electionBody.approveAppliedParty("PDP", 1);
 
         vm.prank(admin);
         vm.expectRevert();
-        electionBody.approveAppliedParty("PDP");
+        electionBody.approveAppliedParty("PDP", 1);
     }
 
     function test_approve_across_two_elections_same_party() public {
-        // Election 1: register and approve PDP
         _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
         vm.prank(admin);
-        electionBody.approveAppliedParty("PDP");
+        electionBody.approveAppliedParty("PDP", 1);
 
-        uint256 partyId = electionBody.partyNameToId("PDP");
+        uint256 partyId = electionBody.partyAcronymToId("PDP");
         (uint256 id1,,,,,NationalElectionBody.Status s1) = electionBody.registeredParties(1, partyId);
         assertEq(id1, partyId);
         assertEq(uint256(s1), uint256(NationalElectionBody.Status.approved));
 
-        // Election 2: register and approve the same party
         vm.prank(admin);
         electionBody.setElectionId(2);
         _register(pdpAddress, "Peoples Democratic Party", 2, "PDP");
 
         vm.prank(admin);
-        electionBody.approveAppliedParty("PDP");
+        electionBody.approveAppliedParty("PDP", 2);
 
         (uint256 id2,,,,,NationalElectionBody.Status s2) = electionBody.registeredParties(2, partyId);
         assertEq(id2, partyId);
         assertEq(uint256(s2), uint256(NationalElectionBody.Status.approved));
 
-        // Election 1 record must be untouched
         (uint256 stillId1,,,,,NationalElectionBody.Status stillS1) = electionBody.registeredParties(1, partyId);
         assertEq(stillId1, partyId);
         assertEq(uint256(stillS1), uint256(NationalElectionBody.Status.approved));
@@ -242,13 +239,12 @@ contract NationalElectionBodyTest is Test {
         uint256 balanceBefore = token.balanceOf(pdpAddress);
 
         vm.prank(admin);
-        electionBody.rejectPartyRegistration("PDP", "Incomplete credentials");
+        electionBody.rejectPartyRegistration("PDP", 1, "Incomplete credentials");
 
-        uint256 partyId = electionBody.partyNameToId("PDP");
+        uint256 partyId = electionBody.partyAcronymToId("PDP");
         (,,,,,NationalElectionBody.Status status) = electionBody.appliedParties(1, partyId);
         assertEq(uint256(status), uint256(NationalElectionBody.Status.rejected));
 
-        // Fee refunded
         assertEq(token.balanceOf(pdpAddress), balanceBefore + REGISTRATION_FEE);
     }
 
@@ -256,36 +252,33 @@ contract NationalElectionBodyTest is Test {
         _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
         vm.prank(randomUser);
         vm.expectRevert();
-        electionBody.rejectPartyRegistration("PDP", "reason");
+        electionBody.rejectPartyRegistration("PDP", 1, "reason");
     }
 
     function test_rejectPartyRegistration_reverts_already_rejected() public {
         _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
         vm.prank(admin);
-        electionBody.rejectPartyRegistration("PDP", "reason");
+        electionBody.rejectPartyRegistration("PDP", 1, "reason");
 
         vm.prank(admin);
         vm.expectRevert();
-        electionBody.rejectPartyRegistration("PDP", "reason again");
+        electionBody.rejectPartyRegistration("PDP", 1, "reason again");
     }
 
     function test_reject_does_not_corrupt_prior_approved_record() public {
-        // Election 1: approve PDP
         _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
         vm.prank(admin);
-        electionBody.approveAppliedParty("PDP");
+        electionBody.approveAppliedParty("PDP", 1);
 
-        uint256 partyId = electionBody.partyNameToId("PDP");
+        uint256 partyId = electionBody.partyAcronymToId("PDP");
 
-        // Election 2: register and reject PDP
         vm.prank(admin);
         electionBody.setElectionId(2);
         _register(pdpAddress, "Peoples Democratic Party", 2, "PDP");
 
         vm.prank(admin);
-        electionBody.rejectPartyRegistration("PDP", "reason");
+        electionBody.rejectPartyRegistration("PDP", 2, "reason");
 
-        // Election 1 registeredParties record must still be approved
         (,,,,,NationalElectionBody.Status s1) = electionBody.registeredParties(1, partyId);
         assertEq(uint256(s1), uint256(NationalElectionBody.Status.approved));
     }
@@ -295,7 +288,7 @@ contract NationalElectionBodyTest is Test {
     function test_setCandidate_success() public {
         _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
         vm.prank(admin);
-        electionBody.approveAppliedParty("PDP");
+        electionBody.approveAppliedParty("PDP", 1);
 
         vm.prank(primaries);
         electionBody.setCandidate(1, "Atiku Abubakar", "PDP", pdpCandidate);
@@ -304,13 +297,13 @@ contract NationalElectionBodyTest is Test {
         assertEq(c.Name, "Atiku Abubakar");
         assertEq(c.Address, pdpCandidate);
         assertEq(c.PartyAcronym, "PDP");
-        assertEq(c.PartyId, electionBody.partyNameToId("PDP"));
+        assertEq(c.PartyId, electionBody.partyAcronymToId("PDP"));
     }
 
     function test_setCandidate_reverts_for_non_primaries_role() public {
         _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
         vm.prank(admin);
-        electionBody.approveAppliedParty("PDP");
+        electionBody.approveAppliedParty("PDP", 1);
 
         vm.prank(randomUser);
         vm.expectRevert();
@@ -325,7 +318,6 @@ contract NationalElectionBodyTest is Test {
 
     function test_setCandidate_reverts_if_party_not_approved() public {
         _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
-        // Not approved yet
         vm.prank(primaries);
         vm.expectRevert();
         electionBody.setCandidate(1, "Atiku Abubakar", "PDP", pdpCandidate);
@@ -334,7 +326,7 @@ contract NationalElectionBodyTest is Test {
     function test_setCandidate_can_be_overwritten_before_election() public {
         _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
         vm.prank(admin);
-        electionBody.approveAppliedParty("PDP");
+        electionBody.approveAppliedParty("PDP", 1);
 
         vm.prank(primaries);
         electionBody.setCandidate(1, "First Candidate", "PDP", pdpCandidate);
@@ -348,19 +340,17 @@ contract NationalElectionBodyTest is Test {
     }
 
     function test_candidates_are_isolated_per_election() public {
-        // Election 1
         _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
         vm.prank(admin);
-        electionBody.approveAppliedParty("PDP");
+        electionBody.approveAppliedParty("PDP", 1);
         vm.prank(primaries);
         electionBody.setCandidate(1, "Candidate A", "PDP", pdpCandidate);
 
-        // Election 2
         vm.prank(admin);
         electionBody.setElectionId(2);
         _register(pdpAddress, "Peoples Democratic Party", 2, "PDP");
         vm.prank(admin);
-        electionBody.approveAppliedParty("PDP");
+        electionBody.approveAppliedParty("PDP", 2);
         vm.prank(primaries);
         electionBody.setCandidate(2, "Candidate B", "PDP", apcCandidate);
 
@@ -376,7 +366,7 @@ contract NationalElectionBodyTest is Test {
     function test_isPartyRegistered_returns_true_when_approved() public {
         _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
         vm.prank(admin);
-        electionBody.approveAppliedParty("PDP");
+        electionBody.approveAppliedParty("PDP", 1);
         assertTrue(electionBody.isPartyRegistered("PDP", 1));
     }
 
@@ -388,7 +378,7 @@ contract NationalElectionBodyTest is Test {
     function test_isPartyRegistered_returns_false_when_rejected() public {
         _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
         vm.prank(admin);
-        electionBody.rejectPartyRegistration("PDP", "reason");
+        electionBody.rejectPartyRegistration("PDP", 1, "reason");
         assertFalse(electionBody.isPartyRegistered("PDP", 1));
     }
 
@@ -399,9 +389,8 @@ contract NationalElectionBodyTest is Test {
     function test_isPartyRegistered_is_election_specific() public {
         _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
         vm.prank(admin);
-        electionBody.approveAppliedParty("PDP");
+        electionBody.approveAppliedParty("PDP", 1);
 
-        // Approved for election 1 but not election 2
         assertTrue(electionBody.isPartyRegistered("PDP", 1));
         assertFalse(electionBody.isPartyRegistered("PDP", 2));
     }
@@ -409,14 +398,14 @@ contract NationalElectionBodyTest is Test {
     function test_getPartyCandidate_returns_empty_when_not_set() public {
         _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
         vm.prank(admin);
-        electionBody.approveAppliedParty("PDP");
+        electionBody.approveAppliedParty("PDP", 1);
 
         NationalElectionBody.CandidateStruct memory c = electionBody.getPartyCandidate("PDP", 1);
         assertEq(bytes(c.Name).length, 0);
     }
 
     function test_getPartyCount() public {
-        _register(pdpAddress, "Peoples Democratic Party", 1, "PDP");
+        _register(pdpAddress, "Peoples Democratic Party",  1, "PDP");
         _register(apcAddress, "All Progressives Congress", 1, "APC");
         assertEq(electionBody.getPartyCount(), 2);
     }

@@ -66,27 +66,44 @@ contract Election is AccessControl, ReentrancyGuard{
 
     uint256 public constant BADGE_THRESHOLD = 3;
 
+    // CUSTOM ERRORS
+    error AlreadyVoted();
+    error InvalidAddress();
+    error ElectionHasEnded();
+    error InvalidEndTime();
+    error EndTimeMustBeGreaterThanStartTime();
+    error ElectionDurationMustBeAtLeast30Mins();
+    error ElectionNotStarted();
+    error NoActiveElection();
+    error ElectionNotActive();
+    error ElectionNotEnded();
+    error AlreadyAccredited();
+    error NotAccredited();
+    error AddressNotLinkedToNIN();
+    error NotARegisteredVoter();
+    error NoCandidateForParty();
+    error CurrentElectionIsActive();
+    error NoPartiesProvided();
+    error PartyNotRegisteredForThisElection();
+    error PartyNotInThisElectionParticipatingList();
+
     //  STRUCTS
 
     struct ElectionDetails {
         string name;
-        uint256 electionBodyId;   // The ID sourced from ElectionBody
+        uint256 electionId;   // The ID sourced from ElectionBody
         uint256 startTime;
         uint256 endTime;
         bool isActive;
-        bool isEnded;
         string winner;            // Stored on-chain so it can be queried after the election ends
         bool isTie;
     }
 
     //  STATE
 
-    // Internal counter for elections created through this contract.
-    uint256 public electionCount;
+    uint256 public currentElectionId;
 
-    // ─────────────────────────────────────────────
     //  MAPPINGS
-    // ─────────────────────────────────────────────
 
     mapping(uint256 => ElectionDetails) public elections;
 
@@ -107,27 +124,12 @@ contract Election is AccessControl, ReentrancyGuard{
 
     //  EVENTS
 
-    event ElectionCreated(uint256 indexed internalId, uint256 indexed electionBodyId, string name);
+    event ElectionCreated(uint256 indexed electionId, string name);
     event VoterAccredited(address indexed voter, uint256 indexed internalId);
     event VoteCast(address indexed voter, uint256 indexed internalId, string partyAcronym);
     event DemocracyBadgeAwarded(address indexed voter);
     event StreakReset(address indexed voter);
     event ElectionEnded(uint256 indexed internalId, string winner, uint256 votes, bool isTie);
-
-    //  ERRORS
-
-    error NoActiveElection();
-    error ElectionAlreadyEnded();
-    error ElectionNotActive();
-    error ElectionTimeNotPassed();
-    error AlreadyAccredited();
-    error NotAccredited();
-    error AlreadyVoted();
-    error AddressNotLinkedToNIN();
-    error NotARegisteredVoter();
-    error PartyNotValidForElection();
-    error NoCandidateForParty();
-    error InvalidAddress();
 
     //  CONSTRUCTOR
 
@@ -159,56 +161,55 @@ contract Election is AccessControl, ReentrancyGuard{
 
     function createElection(
         string memory _name,
-        uint256 _durationInHours,
-        string[] memory _participatingParties
+        string[] memory _participatingParties,
+        uint256 _startTime,
+        uint256 _endTime
     ) external onlyRole(ELECTION_OFFICER_ROLE) {
-        require(_participatingParties.length > 0, "No parties provided");
-        require(_durationInHours > 0, "Duration must be positive");
 
-        // Guard: do not allow a new election while the previous one is still active
-        if (electionCount > 0) {
-            ElectionDetails storage prev = elections[electionCount];
-            require(!prev.isActive, "Previous election still active");
-        }
+        if(elections[currentElectionId].isActive) revert CurrentElectionIsActive();
+        if(_participatingParties.length == 0) revert NoPartiesProvided();
 
-        uint256 bodyId = electionBody.electionId();
+        if(_endTime == 0) revert InvalidEndTime();
+        if(_startTime > _endTime) revert EndTimeMustBeGreaterThanStartTime();
+        if((_endTime - _startTime) < 1800 seconds) revert ElectionDurationMustBeAtLeast30Mins();
 
-        electionCount++;
-        uint256 newId = electionCount;
+
+        currentElectionId = electionBody.electionId();
 
         // Validate every party against ElectionBody before creating
         for (uint256 i = 0; i < _participatingParties.length; i++) {
-            require(
-                electionBody.isPartyRegistered(_participatingParties[i], bodyId),
-                "Party not registered for this election"
-            );
-            electionParties[newId].push(_participatingParties[i]);
+
+            if(!electionBody.isPartyRegistered(_participatingParties[i], currentElectionId)) revert PartyNotRegisteredForThisElection();
+
+            electionParties[currentElectionId].push(_participatingParties[i]);
         }
 
-        elections[newId] = ElectionDetails({
+        elections[currentElectionId] = ElectionDetails({
             name:          _name,
-            electionBodyId: bodyId,
-            startTime:     block.timestamp,
-            endTime:       block.timestamp + (_durationInHours * 1 hours),
+            electionId: currentElectionId,
+            startTime:     block.timestamp + _startTime,
+            endTime:       block.timestamp + _endTime,
             isActive:      true,
-            isEnded:       false,
             winner:        "",
             isTie:         false
         });
 
-        emit ElectionCreated(newId, bodyId, _name);
+        emit ElectionCreated(currentElectionId, _name);
     }
 
     //  SELF-ACCREDITATION
 
     function accreditMyself() external {
-        uint256 currentId = electionCount;
+        uint256 currentId = currentElectionId;
 
         if (currentId == 0) revert NoActiveElection();
 
         ElectionDetails storage election = elections[currentId];
-        if (election.isEnded) revert ElectionAlreadyEnded();
         if (!election.isActive) revert ElectionNotActive();
+
+        if (block.timestamp > election.endTime) {
+            revert ElectionHasEnded();
+        }
 
         // Verify the caller has a valid NIN on record
         bytes32 ninHash = registry.getValidNINHashForAddress(msg.sender);
@@ -226,61 +227,61 @@ contract Election is AccessControl, ReentrancyGuard{
 
     //  VOTING
 
-    function vote(uint256 _internalElectionId, string memory _partyAcronym) external nonReentrant {
-        ElectionDetails storage election = elections[_internalElectionId];
+    function vote(string memory _partyAcronym) external nonReentrant {
+        ElectionDetails storage election = elections[currentElectionId];
 
-        if (!election.isActive) revert ElectionNotActive();
-        require(
-            block.timestamp >= election.startTime && block.timestamp <= election.endTime,
-            "Election closed"
-        );
-        if (hasVoted[_internalElectionId][msg.sender]) revert AlreadyVoted();
-        if (!isAccreditedForElection[_internalElectionId][msg.sender]) revert NotAccredited();
+        if (block.timestamp < election.startTime) {
+            revert ElectionNotStarted();
+        }
+
+        if (block.timestamp > election.endTime) {
+            revert ElectionHasEnded();
+        }
+
+        if (hasVoted[currentElectionId][msg.sender]) revert AlreadyVoted();
+        if (!isAccreditedForElection[currentElectionId][msg.sender]) revert NotAccredited();
 
         // Validate the party is in this election's participating list
-        require(
-            _partyIsInElection(_internalElectionId, _partyAcronym),
-            "Party not in this election"
-        );
+        if(!_partyIsInElection(currentElectionId, _partyAcronym)) revert PartyNotInThisElectionParticipatingList();
 
         // Validate the party has a candidate registered with ElectionBody
         IElectionBody.CandidateStruct memory candidate =
-            electionBody.getPartyCandidate(_partyAcronym, election.electionBodyId);
+            electionBody.getPartyCandidate(_partyAcronym, election.electionId);
         if (bytes(candidate.Name).length == 0) revert NoCandidateForParty();
 
         // Record the vote
-        voteCounts[_internalElectionId][_partyAcronym]++;
-        hasVoted[_internalElectionId][msg.sender] = true;
+        voteCounts[currentElectionId][_partyAcronym]+=1;
+        hasVoted[currentElectionId][msg.sender] = true;
 
         // Retrieve voter data for streak handling
         bytes32 ninHash = registry.getValidNINHashForAddress(msg.sender);
         IRegistry.RegisteredVoter memory voterData = registry.registeredVoter(ninHash);
 
-        _handleStreakAndRewards(msg.sender, voterData.voterStreak, _internalElectionId);
+        _handleStreakAndRewards(msg.sender, voterData.voterStreak);
+        lastVotedElectionId[msg.sender] = currentElectionId;
 
-        emit VoteCast(msg.sender, _internalElectionId, _partyAcronym);
+        emit VoteCast(msg.sender, currentElectionId, _partyAcronym);
     }
 
     //  END ELECTION
 
     /// Ends an election, tallies votes, and stores the result on-chain.
-    function endElection(uint256 _internalElectionId) external onlyRole(ELECTION_OFFICER_ROLE) {
-        ElectionDetails storage election = elections[_internalElectionId];
+    function declareWinner() external onlyRole(ELECTION_OFFICER_ROLE) {
+        ElectionDetails storage election = elections[currentElectionId];
 
         if (!election.isActive) revert ElectionNotActive();
-        if (block.timestamp <= election.endTime) revert ElectionTimeNotPassed();
+        if (block.timestamp <= election.endTime) revert ElectionNotEnded();
 
         election.isActive = false;
-        election.isEnded  = true;
 
         string memory winner    = "No Votes";
         uint256 highestVotes    = 0;
         bool isTie              = false;
 
-        string[] memory parties = electionParties[_internalElectionId];
+        string[] memory parties = electionParties[currentElectionId];
 
         for (uint256 i = 0; i < parties.length; i++) {
-            uint256 votes = voteCounts[_internalElectionId][parties[i]];
+            uint256 votes = voteCounts[currentElectionId][parties[i]];
 
             if (votes > highestVotes) {
                 highestVotes = votes;
@@ -296,7 +297,7 @@ contract Election is AccessControl, ReentrancyGuard{
         election.winner = winner;
         election.isTie  = isTie;
 
-        emit ElectionEnded(_internalElectionId, winner, highestVotes, isTie);
+        emit ElectionEnded(currentElectionId, winner, highestVotes, isTie);
     }
 
     //  INTERNAL HELPERS
@@ -304,13 +305,11 @@ contract Election is AccessControl, ReentrancyGuard{
     // Handles streak increment/reset and badge minting.
     function _handleStreakAndRewards(
         address _voter,
-        uint256 _currentStreak,
-        uint256 _internalElectionId
+        uint256 _currentStreak
     ) internal {
         uint256 lastElectionVoted = lastVotedElectionId[_voter];
-        lastVotedElectionId[_voter] = _internalElectionId;
 
-        if (lastElectionVoted != 0 && _internalElectionId > (lastElectionVoted + 1)) {
+        if (lastElectionVoted != 0 && currentElectionId > (lastElectionVoted + 1)) {
             // Voter missed at least one election — reset streak to 1
             // (reset to 0 first, then increment so this vote counts as the new start)
             try registry.resetVoterStreak(_voter) {
@@ -335,8 +334,8 @@ contract Election is AccessControl, ReentrancyGuard{
     }
 
     // Returns true if the given party acronym is in the election's participating list.
-    function _partyIsInElection(uint256 _internalElectionId, string memory _partyAcronym) internal view returns (bool) {
-        string[] memory parties = electionParties[_internalElectionId];
+    function _partyIsInElection(uint256 _electionId, string memory _partyAcronym) internal view returns (bool) {
+        string[] memory parties = electionParties[_electionId];
         bytes32 target = keccak256(abi.encodePacked(_partyAcronym));
         for (uint256 i = 0; i < parties.length; i++) {
             if (keccak256(abi.encodePacked(parties[i])) == target) return true;
@@ -347,12 +346,12 @@ contract Election is AccessControl, ReentrancyGuard{
     //  VIEW FUNCTIONS
 
     // Returns the stored winner for a completed election.
-    function getElectionResult(uint256 _internalElectionId)
+    function getElectionResult(uint256 _electionId)
         external
         view
         returns (string memory winner, bool isTie)
     {
-        ElectionDetails storage e = elections[_internalElectionId];
+        ElectionDetails storage e = elections[_electionId];
         return (e.winner, e.isTie);
     }
 }

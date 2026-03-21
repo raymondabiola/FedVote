@@ -19,7 +19,6 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
     uint256 public candidacyFee;
     uint256 public membershipFee;
     uint256 public memberId;
-    uint256 public lastWinnerId;
 
     bytes32 public constant PARTY_LEADER = keccak256("PARTY_LEADER");
     bytes32 public constant MEMBER_ROLE = keccak256("MEMBER_ROLE");
@@ -46,7 +45,6 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
         string party;
         address walletAddress;
         bool hasPaidForMembership;
-        bool hasVoted;
     }
 
     struct Candidate {
@@ -54,7 +52,6 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
         string name;
         string party;
         uint256 voteCount;
-        bool isRegistered;
         address walletAddress;
     }
 
@@ -63,22 +60,24 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
         string partyName;
         uint256 startTime;
         uint256 endTime;
+        uint256 candidateRegDeadline;
+        uint256 winnerCandidateIndex;
     }
 
     mapping(uint256 => Candidate[]) public candidates;
     mapping(address => Member) public members;
     mapping(uint256 => uint256) public totalCandidates;
     mapping(uint256 => ElectionDetails) public elections;
-    mapping(bytes32 => bool) private memberExists;
     mapping(address => mapping(uint => bool)) public hasPaidForCandidacy;
     mapping(address => mapping(uint => bool)) public isCandidateForElection;
-
-    address[] public memberAddresses;
+    // internalElectionId => voter address => has voted
+    mapping(uint256 => mapping(address => bool)) public hasVoted;
+    mapping(uint256 => bool) public winnerDeclared;
 
     event DeclareWinner(uint256 electionId, uint256 winner, bool isTie, uint256 highestVoteCount);
     event MemberRemoved(address memberAddress); 
+    event DeclareTie(uint256 electionId, uint256 highestVoteCount);
 
-    error NotYourParty();
     error InvalidName();
     error InvalidNIN();
     error InvalidCandidateID();
@@ -88,7 +87,6 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
     error CallerMustBeAnEOA();
     error CandidateNotRegistered();
     error NotPaidForCandidacy();
-    error CandidateAlreadyExists();
     error NotPaidForMembership();
     error AlreadyPaidForCandidacy();
     error AlreadyPaidForMembership();
@@ -101,6 +99,16 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
     error NotAMember();
     error ElectionDoesNotExist();
     error AlreadyACandidateForThisElection(uint electionId);
+    error InvalidEndTime();
+    error EndTimeMustBeGreaterThanStartTime();
+    error ElectionDurationMustBeAtLeast30Mins();
+    error ElectionResultIsATie();
+    error NoCandidatesRegistered();
+    error NoValidCandidates();
+    error ElectionStarted();
+    error ElectionNotStarted();
+    error CandidateRegDeadlineMustBeAtLeast30MinsLessThanStartTime();
+    error CandRegDeadlineReached();
 
     function updateNationalTokenCA(address _nationalToken) external onlyRole(DEFAULT_ADMIN_ROLE){
           if (_nationalToken == address(0)) revert InvalidAddress();
@@ -140,6 +148,10 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
     function payForMembership(uint256 _nin) external nonReentrant {
         uint256 _fee = membershipFee;
 
+        if (msg.sender.code.length > 0) {
+            revert CallerMustBeAnEOA();
+        }
+
         if (registry.checkIfCitizenIsPartyMember(_nin)) {
             revert AlreadyAMemberOfAParty();
         }
@@ -160,15 +172,11 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
             revert InvalidAmount();
         }
 
-        if (msg.sender.code.length > 0) {
-            revert CallerMustBeAnEOA();
-        }
-
         members[msg.sender].hasPaidForMembership = true;
         nationalToken.transferFrom(msg.sender, address(this), _fee);
     }
 
-    function registerMember(string memory _name, uint256 _nin) external {
+    function memberRegistration(string memory _name, uint256 _nin) external {
         if (registry.checkIfCitizenIsPartyMember(_nin)) {
             revert AlreadyAMemberOfAParty();
         }
@@ -188,7 +196,7 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
         }
 
         if (hasRole(MEMBER_ROLE, msg.sender)) {
-        revert AlreadyAMember(); // Add this error
+        revert AlreadyAMember(); 
         }
         
         if (!members[msg.sender].hasPaidForMembership) {
@@ -202,29 +210,19 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
             name: _name,
             party: partyName,
             walletAddress: msg.sender,
-            hasPaidForMembership: true,
-            hasVoted: false
+            hasPaidForMembership: true
         });
-
-        memberAddresses.push(msg.sender);
 
         registry.setCitizenPartyMembershipStatusAsTrue(_nin);
         _grantRole(MEMBER_ROLE, msg.sender);
     }
 
     function removeMember(address _memberAddress, uint256 _nin) external onlyRole(PARTY_LEADER) {
+        if(_memberAddress == address(0)) revert InvalidAddress();
         if(!hasRole(MEMBER_ROLE, _memberAddress)) revert NotAMember();
         delete members[_memberAddress];
 
         _revokeRole(MEMBER_ROLE, _memberAddress);
-
-        for (uint256 i = 0; i < memberAddresses.length; i++) {
-            if (memberAddresses[i] == _memberAddress) {
-                memberAddresses[i] = memberAddresses[memberAddresses.length - 1];
-
-                memberAddresses.pop();
-            }
-        }
 
         registry.setCitizenPartyMembershipStatusAsFalse(_nin);
 
@@ -232,18 +230,16 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
     }
 
     function payForCandidateship() external onlyRole(MEMBER_ROLE) nonReentrant{
-        uint256 _fee = candidacyFee;
-
         if (hasPaidForCandidacy[msg.sender][electionId]) {
             revert AlreadyPaidForCandidacy();
         }
 
-        if (block.timestamp > elections[electionId].endTime) {
-        revert ElectionEnded();
+        if (block.timestamp > elections[electionId].candidateRegDeadline) {
+        revert CandRegDeadlineReached();
         }
         
         hasPaidForCandidacy[msg.sender][electionId] = true;
-        nationalToken.transferFrom(msg.sender, address(this), _fee);
+        nationalToken.transferFrom(msg.sender, address(this), candidacyFee);
     }
 
     function registerCandidate(string memory _name, uint _nin) external onlyRole(MEMBER_ROLE) {
@@ -252,8 +248,8 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
             revert NotPaidForCandidacy();
         }
 
-        if (block.timestamp > elections[electionId].endTime) {
-        revert ElectionEnded();
+        if (block.timestamp > elections[electionId].candidateRegDeadline) {
+        revert CandRegDeadlineReached();
         }
 
         string memory validName = registry.getValidNameForNIN(_nin);
@@ -280,7 +276,6 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
                 name: _name,
                 party: partyName,
                 voteCount: 0,
-                isRegistered: true,
                 walletAddress: msg.sender
             })
         );
@@ -291,87 +286,168 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
         external
         onlyRole(PARTY_LEADER)
     {
-        Candidate[] storage candidateList = candidates[_electionId];
-
-        if (!candidateList[_candidateId - 1].isRegistered) {
+        Candidate[] storage candidatesArray = candidates[_electionId];
+        
+        if (candidatesArray.length == 0) {
+            revert NoCandidatesRegistered();
+        }
+        
+        if (block.timestamp > elections[_electionId].startTime) {
+            revert ElectionStarted(); // Can't remove after election starts
+        }
+        
+        // Find the candidate by ID
+        bool found = false;
+        uint256 foundIndex;
+        for (uint i = 0; i < candidatesArray.length; i++) {
+            if (candidatesArray[i].id == _candidateId) {
+                foundIndex = i;
+                found = true;
+                break;
+            }
+        }
+        if (!found) revert InvalidCandidateID();
+        Candidate storage candidate = candidatesArray[foundIndex];
+        
+        // Verify wallet address matches
+        if (candidate.walletAddress != _walletAddress) {
+            revert InvalidAddress();
+        }
+        
+        // Verify candidate is registered for this election
+        if (!isCandidateForElection[candidate.walletAddress][_electionId]) {
             revert CandidateNotRegistered();
         }
+        
+        // Clear the mapping
+        isCandidateForElection[candidate.walletAddress][_electionId] = false;
+        
+        // Swap with last element and pop
+        candidatesArray[foundIndex] = candidatesArray[candidatesArray.length - 1];
+        candidatesArray.pop();
 
-        if (block.timestamp > elections[_electionId].endTime) {
-        revert ElectionEnded(); // Can't remove after election ends
+        if(totalCandidates[_electionId] > 0 ){
+            totalCandidates[_electionId]-= 1;
         }
-
-        candidateList[_candidateId - 1] = candidateList[candidateList.length - 1];
-        candidateList.pop();
     }
 
-    function createElection(uint256 _durationInHours) external onlyRole(PARTY_LEADER) {
+    function createElection(uint256 _startTime, uint256 _endTime, uint256 _candidateRegDeadline) external onlyRole(PARTY_LEADER) {
+        if(_endTime == 0) revert InvalidEndTime();
+        if(_startTime > _endTime) revert EndTimeMustBeGreaterThanStartTime();
+        if((_endTime - _startTime) < 1800 seconds) revert ElectionDurationMustBeAtLeast30Mins();
+        if(_startTime - _candidateRegDeadline < 1800 seconds) revert CandidateRegDeadlineMustBeAtLeast30MinsLessThanStartTime();
+
         elections[electionId] = ElectionDetails({
             id: electionId,
             partyName: partyName,
-            startTime: block.timestamp,
-            endTime: block.timestamp + (_durationInHours * 1 hours)   
+            startTime: block.timestamp + _startTime,
+            endTime: block.timestamp + _endTime,
+            candidateRegDeadline: block.timestamp + _candidateRegDeadline,
+            winnerCandidateIndex: 0
      });
 
     }
 
     function voteforPrimaryElection(uint256 _candidateId, uint256 _electionId) external onlyRole(MEMBER_ROLE) {
         if(!electionBody.checkIfElectionExist(_electionId)) revert ElectionDoesNotExist();
-        Member storage voter = members[msg.sender];
-        Candidate storage candidate = candidates[_electionId][_candidateId - 1];
+        Candidate[] storage candidatesArray = candidates[_electionId];
 
-         if (!candidate.isRegistered) {
-        revert CandidateNotRegistered();
+        bool found = false;
+        uint256 foundIndex;
+        for (uint i = 0; i < candidatesArray.length; i++) {
+            if (candidatesArray[i].id == _candidateId) {
+                foundIndex = i;
+                found = true;
+                break;
+            }
         }
 
+        if (!found) revert InvalidCandidateID();
+        Candidate storage candidate = candidatesArray[foundIndex];
+
+        if (block.timestamp < elections[_electionId].startTime) {
+            revert ElectionNotStarted();
+        }
+
+        if(!isCandidateForElection[candidate.walletAddress][_electionId]) revert CandidateNotRegistered();
+        
         if (block.timestamp > elections[_electionId].endTime) {
             revert ElectionEnded();
         }
 
-        if (_candidateId == 0 || _candidateId > totalCandidates[_electionId]) {
-            revert InvalidCandidateID();
-        }
-
-        if (voter.hasVoted) {
+        if (hasVoted[_electionId][msg.sender]) {
             revert AlreadyVoted();
         }
 
         candidate.voteCount++;
-        voter.hasVoted = true;
+        hasVoted[_electionId][msg.sender] = true;
     }
 
-    function declareWinner(uint256 _electionId) external onlyRole(PARTY_LEADER) returns (Candidate memory) {
+    function declareWinner(uint256 _electionId) 
+        external 
+        onlyRole(PARTY_LEADER) 
+        returns (Candidate memory) 
+    {
         ElectionDetails storage election = elections[_electionId];
-
+        
+        // Validate election has ended
         if (block.timestamp < election.endTime) {
             revert ElectionIsOngoing();
         }
-
+        
+        Candidate[] memory candidateList = candidates[_electionId];
+        if (candidateList.length == 0) {
+            revert NoCandidatesRegistered();
+        }
+        
+        // Find winner
         uint256 highestVotes = 0;
-        uint256 winnerId = 0;
+        uint256 winnerIndex = 0;
         bool isTie = false;
-
-        for (uint256 i = 0; i < candidates[_electionId].length; i++) {
-            if (!candidates[_electionId][i].isRegistered) continue;
-
-            if (candidates[_electionId][i].voteCount > highestVotes) {
-                highestVotes = candidates[_electionId][i].voteCount;
-                winnerId = i;
+        
+        for (uint256 i = 0; i < candidateList.length; i++) {
+            // Skip candidates not registered for this election
+            if (!isCandidateForElection[candidateList[i].walletAddress][_electionId]) {
+                continue;
+            }
+            
+            uint256 currentVotes = candidateList[i].voteCount;
+            
+            if (currentVotes > highestVotes) {
+                // New winner found
+                highestVotes = currentVotes;
+                winnerIndex = i;
                 isTie = false;
-            } else if (candidates[_electionId][i].voteCount == highestVotes) {
+            } else if (currentVotes == highestVotes && highestVotes > 0) {
+                // Tie detected
                 isTie = true;
             }
         }
+        
+        // Handle case with no valid candidates
+        if (highestVotes == 0 && candidateList.length > 0) {
+            revert NoValidCandidates();
+        }
 
-        lastWinnerId = winnerId;
-
-        emit DeclareWinner(_electionId, winnerId, isTie, highestVotes);
-
-        return candidates[_electionId][winnerId];
+        if(!isTie){
+            elections[_electionId].winnerCandidateIndex = winnerIndex;
+            emit DeclareWinner(
+            _electionId, 
+            elections[_electionId].winnerCandidateIndex,
+            isTie, 
+            highestVotes
+        );
+        winnerDeclared[_electionId] = true;
+        return candidateList[winnerIndex];
+        } else{
+            emit DeclareTie(_electionId, highestVotes);
+            revert ElectionResultIsATie();
+        }
     }
 
     function registerWinnerWithElectionBody(uint256 _electionId) external onlyRole(PARTY_LEADER) {
-        Candidate memory winner = candidates[_electionId][lastWinnerId];
+        if(!winnerDeclared[_electionId]) revert ElectionIsOngoing(); 
+        Candidate memory winner = candidates[_electionId][elections[_electionId].winnerCandidateIndex];
 
         electionBody.setCandidate(_electionId, winner.name, winner.party, winner.walletAddress);
     }
@@ -391,16 +467,6 @@ contract PoliticalPartyManager is AccessControl, ReentrancyGuard {
 
     function getPartyCandidate(uint _electionId, uint _candidateId) external view returns (Candidate memory) {
         return candidates[_electionId][_candidateId - 1];
-    }
-
-    function getAllPartyMembers() external view returns (Member[] memory) {
-        uint256 length = memberAddresses.length;
-        Member[] memory partyMembers = new Member[](length);
-
-        for (uint256 i = 0; i < length; i++) {
-            partyMembers[i] = members[memberAddresses[i]];
-        }
-        return partyMembers;
     }
 
     function getAllPartyCandidates(uint256 _electionId) external view returns (Candidate[] memory) {
