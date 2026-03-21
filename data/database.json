@@ -1,32 +1,8 @@
 [
-  { "nin": "98888888880", "name": "Tunde", "address": "address1"},
-  { "nin": "98888888881", "name": "Ada", "address": "address2" },
-  { "nin": "98888888882", "name": "Bola", "address": "address3" },
-  { "nin": "98888888883", "name": "Kingsley", "address": "address4" },
-  { "nin": "98888888884", "name": "James", "address": "address5" },
-  { "nin": "98888888885", "name": "Tobi", "address": "address6" },
-  { "nin": "98888888886", "name": "Musa", "address": "address7" },
-  { "nin": "98888888887", "name": "Gift", "address": "address8" },
-  { "nin": "98888888888", "name": "Raymond", "address": "address9" },
-  { "nin": "98888888889", "name": "John", "address": "address10" },
-  { "nin": "98888888890", "name": "Raphael", "address": "address11" },
-  { "nin": "98888888891", "name": "Bradley", "address": "address12" },
-  { "nin": "98888888892", "name": "Femi", "address": "address13" },
-  { "nin": "98888888893", "name": "Jones", "address": "address14" },
-  { "nin": "98888888894", "name": "Lola", "address": "address15" },
-  { "nin": "98888888895", "name": "Ojukwu", "address": "address16" },
-  { "nin": "98888888896", "name": "Eze", "address": "address17" },
-  { "nin": "98888888897", "name": "Gogo", "address": "address18" },
-  { "nin": "98888888898", "name": "Levi", "address": "address19" },
-  { "nin": "98888888899", "name": "Adams", "address": "address20" },
-  { "nin": "98888888900", "name": "Bobo", "address": "address21" },
-  { "nin": "98888888901", "name": "Afeez", "address": "address22" },
-  { "nin": "98888888902", "name": "Tolu", "address": "address23" },
-  { "nin": "98888888903", "name": "Jide", "address": "address24" },
-  { "nin": "98888888904", "name": "Peter", "address": "address25" },
-  { "nin": "98888888905", "name": "Alfred", "address": "address26" },
-  { "nin": "98888888906", "name": "Remi", "address": "address27" },
-  { "nin": "98888888907", "name": "Esther", "address": "address28" },
-  { "nin": "98888888908", "name": "Luke", "address": "address29" },
-  { "nin": "98888888909", "name": "Dave", "address": "address30" }
+  
+  
+  { "nin": "98888888887", "name": "Dayo", "address": "0x71d176A223D9E7cfd2F824324412C51b3a7Bd01C"},
+  { "nin": "98888888888", "name": "Joy", "address": "0xA67653B02E095665D79e127855c2657e1E01eEdb"},
+  { "nin": "98888888889", "name": "Taiwo", "address": "0xaC1e875d4DF9fE277144049272b7C5Ccab56BEBc"}
+  
 ]

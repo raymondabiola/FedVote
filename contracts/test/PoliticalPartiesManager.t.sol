@@ -24,7 +24,6 @@ contract PoliticalPartyManagerTest is Test {
     address electionBodyAddress = address(1);
     address centralBankAddress = address(2);
 
-    // Test Addresses
     address chairman = address(3);
     address candidate = address(4);
     address attacker = address(6);
@@ -37,11 +36,15 @@ contract PoliticalPartyManagerTest is Test {
     string[] names;
     address[] addresses;
 
-    // Membership and Candidacy fee
     uint256 fee = 100 * (10 ** 18);
-
-    // ElectionId
     uint256 electionId = 101;
+
+    // createElection params: startTime=1800s, endTime=7200s, candidateRegDeadline=0
+    // satisfies: endTime>0, startTime<=endTime, endTime-startTime>=1800, startTime-deadline>=1800
+    uint256 constant START  = 1800;
+    uint256 constant END_2H = 7200;
+    uint256 constant END_1H = 3600;
+    uint256 constant DEADLINE = 0;
 
     function setUp() public {
         factory = new PoliticalPartiesManagerFactory();
@@ -60,7 +63,6 @@ contract PoliticalPartyManagerTest is Test {
 
     function testcreateNewPoliticalParty() public {
         assertEq(partyManagers.length, 1);
-
         partyManager = PoliticalPartyManager(partyManagers[0]);
         assertEq(partyManager.chairman(), chairman);
         assertEq(partyManager.partyName(), "Apc");
@@ -71,42 +73,35 @@ contract PoliticalPartyManagerTest is Test {
     }
 
     function testSetCandidacyFee() public {
-        // Edge case test for Admin can set Candidacy Fee
         vm.prank(chairman);
         partyManager.setCandidacyFee(fee);
         assertEq(partyManager.candidacyFee(), fee);
 
-        // Edge case test for attacker can't set Candidacy Fee
         vm.prank(attacker);
         vm.expectRevert();
         partyManager.setCandidacyFee(fee);
 
-        // Edge case test for Candidacy Fee can't be Zero
-        uint256 fee = 0;
+        uint256 zeroFee = 0;
         vm.prank(chairman);
         vm.expectRevert(PoliticalPartyManager.InvalidAmount.selector);
-        partyManager.setCandidacyFee(fee);
+        partyManager.setCandidacyFee(zeroFee);
     }
 
     function testSetMembershipFee() public {
-        // Edge case test for Admin can set Membership Fee
         vm.prank(chairman);
         partyManager.setMembershipFee(fee);
         assertEq(partyManager.membershipFee(), fee);
 
-        // Edge case test for attacker can't set Membership Fee
         vm.prank(attacker);
         vm.expectRevert();
         partyManager.setMembershipFee(fee);
 
-        // Edge case test for Membership Fee can't be Zero
-        uint256 fee = 0;
+        uint256 zeroFee = 0;
         vm.prank(chairman);
         vm.expectRevert(PoliticalPartyManager.InvalidAmount.selector);
-        partyManager.setMembershipFee(fee);
+        partyManager.setMembershipFee(zeroFee);
     }
 
-    // Test payForMembership
     function getNumHash(uint256 _num) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked(_num));
     }
@@ -131,23 +126,23 @@ contract PoliticalPartyManagerTest is Test {
     }
 
     function setupValidUser() internal {
-    vm.prank(chairman);
-    partyManager.setMembershipFee(fee);
+        vm.prank(chairman);
+        partyManager.setMembershipFee(fee);
 
-    simulateArrayPopulate();
+        simulateArrayPopulate();
 
-    vm.prank(address(this));
-    registry.grantRole(registry.PARTY_CONTRACT_ROLE(), address(partyManager));
+        vm.prank(address(this));
+        registry.grantRole(registry.PARTY_CONTRACT_ROLE(), address(partyManager));
 
-    vm.prank(user1);
-    registry.voterSelfRegister(2345, "Alice");
+        vm.prank(user1);
+        registry.voterSelfRegister(2345, "Alice");
 
-    vm.prank(centralBankAddress);
-    nationalToken.mint(user1, 1000 * (10 ** 18));
+        vm.prank(centralBankAddress);
+        nationalToken.mint(user1, 1000 * (10 ** 18));
 
-    vm.startPrank(user1);
-    nationalToken.approve(address(partyManager), fee);
-}
+        vm.startPrank(user1);
+        nationalToken.approve(address(partyManager), fee);
+    }
 
     function testPayForMemebershipWithValidNin() public {
         setupValidUser();
@@ -167,7 +162,7 @@ contract PoliticalPartyManagerTest is Test {
     function testRegisterMemberWithValidNameAndNin() public {
         setupValidUser();
         partyManager.payForMembership(2345);
-        partyManager.registerMember("Alice", 2345);
+        partyManager.memberRegistration("Alice", 2345);
         vm.stopPrank();
         assertTrue(partyManager.hasRole(partyManager.MEMBER_ROLE(), user1));
     }
@@ -176,7 +171,7 @@ contract PoliticalPartyManagerTest is Test {
         setupValidUser();
         partyManager.payForMembership(2345);
         vm.expectRevert();
-        partyManager.registerMember("Alce", 235);
+        partyManager.memberRegistration("Alce", 235);
         vm.stopPrank();
         assertFalse(partyManager.hasRole(partyManager.MEMBER_ROLE(), user1));
     }
@@ -185,15 +180,15 @@ contract PoliticalPartyManagerTest is Test {
         setupValidUser();
         partyManager.payForMembership(2345);
         vm.expectRevert();
-        partyManager.registerMember("Alice", 2350);
+        partyManager.memberRegistration("Alice", 2350);
         vm.stopPrank();
         assertFalse(partyManager.hasRole(partyManager.MEMBER_ROLE(), user1));
-    }    
+    }
 
     function testOnlyAdminRemoveMember() public {
         setupValidUser();
         partyManager.payForMembership(2345);
-        partyManager.registerMember("Alice", 2345);
+        partyManager.memberRegistration("Alice", 2345);
         vm.stopPrank();
 
         vm.prank(chairman);
@@ -207,7 +202,7 @@ contract PoliticalPartyManagerTest is Test {
     function testAttackerCantRemoveMember() public {
         setupValidUser();
         partyManager.payForMembership(2345);
-        partyManager.registerMember("Alice", 2345);
+        partyManager.memberRegistration("Alice", 2345);
         vm.stopPrank();
 
         vm.prank(attacker);
@@ -218,19 +213,18 @@ contract PoliticalPartyManagerTest is Test {
         vm.prank(address(this));
         assertTrue(registry.checkIfCitizenIsPartyMember(2345));
     }
-    
+
     function testOnlyMemberCanPayAndCantPayTwiceForCandidacy() public {
-   uint256 electionId = 101;
         vm.prank(address(this));
         nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
         vm.prank(chairman);
-        partyManager.createElection(2);
+        partyManager.createElection(START, END_2H, DEADLINE);
 
         setupValidUser();
         partyManager.payForMembership(2345);
-        partyManager.registerMember("Alice", 2345);
+        partyManager.memberRegistration("Alice", 2345);
         vm.stopPrank();
 
         vm.prank(centralBankAddress);
@@ -242,15 +236,12 @@ contract PoliticalPartyManagerTest is Test {
 
         assertTrue(partyManager.hasPaidForCandidacy(user1, electionId));
 
-        // Member Can't Pay Twice
         vm.prank(user1);
         vm.expectRevert(PoliticalPartyManager.AlreadyPaidForCandidacy.selector);
         partyManager.payForCandidateship();
     }
-    
 
     function testAttackerCannotPayForCandidacy() public {
-        uint256 electionId = 101;
         vm.prank(chairman);
         partyManager.setElectionId();
         vm.prank(centralBankAddress);
@@ -265,19 +256,10 @@ contract PoliticalPartyManagerTest is Test {
     }
 
     function testAdminCanSetElectionId() public {
-        // uint256 electionId = 101;
-        // vm.prank(chairman);
-        // nationalElectionBody.getElectionId(electionId);
-        // assertEq(partyManager.electionId(), electionId);
-
         uint256 expectedId = nationalElectionBody.getElectionId();
-
         vm.prank(chairman);
         partyManager.setElectionId();
-
-        uint256 storedId = partyManager.electionId();
-
-        assertEq(storedId, expectedId);
+        assertEq(partyManager.electionId(), expectedId);
     }
 
     function testAttackerCannotSetElectionId() public {
@@ -289,7 +271,7 @@ contract PoliticalPartyManagerTest is Test {
     function setupValidMember() internal {
         setupValidUser();
         partyManager.payForMembership(2345);
-        partyManager.registerMember("Alice", 2345);
+        partyManager.memberRegistration("Alice", 2345);
         vm.stopPrank();
 
         vm.prank(centralBankAddress);
@@ -301,29 +283,27 @@ contract PoliticalPartyManagerTest is Test {
     }
 
     function testMembersCanRegisterAsCandidate() public {
-        uint256 electionId = 101;
         vm.prank(address(this));
         nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
         vm.prank(chairman);
-        partyManager.createElection(2);
+        partyManager.createElection(START, END_2H, DEADLINE);
 
         setupValidMember();
-        
+
         vm.prank(user1);
         partyManager.registerCandidate("Alice", 2345);
-        assertTrue(partyManager.getPartyCandidate(electionId, 1).isRegistered);
+        assertTrue(partyManager.isCandidateForElection(user1, electionId));
     }
 
     function testCantRegisterWithInvalidName() public {
-        uint256 electionId = 101;
         vm.prank(address(this));
         nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
         vm.prank(chairman);
-        partyManager.createElection(2);
+        partyManager.createElection(START, END_2H, DEADLINE);
 
         setupValidMember();
         vm.prank(user1);
@@ -332,13 +312,12 @@ contract PoliticalPartyManagerTest is Test {
     }
 
     function testCantRegisterWithInvalidNin() public {
-        uint256 electionId = 101;
         vm.prank(address(this));
         nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
         vm.prank(chairman);
-        partyManager.createElection(2);
+        partyManager.createElection(START, END_2H, DEADLINE);
 
         setupValidMember();
         vm.prank(user1);
@@ -347,13 +326,12 @@ contract PoliticalPartyManagerTest is Test {
     }
 
     function testAttackerCantRegisterAsCandidate() public {
-        uint256 electionId = 101;
         vm.prank(address(this));
         nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
         vm.prank(chairman);
-        partyManager.createElection(2);
+        partyManager.createElection(START, END_2H, DEADLINE);
 
         setupValidMember();
         vm.prank(attacker);
@@ -362,13 +340,12 @@ contract PoliticalPartyManagerTest is Test {
     }
 
     function testAdminCanRemoveCandidate() public {
-    uint256 electionId = 101;
         vm.prank(address(this));
         nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
         vm.prank(chairman);
-        partyManager.createElection(2);
+        partyManager.createElection(START, END_2H, DEADLINE);
 
         setupValidMember();
         vm.prank(user1);
@@ -379,13 +356,12 @@ contract PoliticalPartyManagerTest is Test {
     }
 
     function testAdminCantRemoveUnregisteredCandidate() public {
-        uint256 electionId = 101;
         vm.prank(address(this));
         nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
         vm.prank(chairman);
-        partyManager.createElection(2);
+        partyManager.createElection(START, END_2H, DEADLINE);
 
         setupValidMember();
         vm.startPrank(user1);
@@ -398,13 +374,12 @@ contract PoliticalPartyManagerTest is Test {
     }
 
     function testAttackerCantRemoveCandidate() public {
-        uint256 electionId = 101;
         vm.prank(address(this));
         nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
         vm.prank(chairman);
-        partyManager.createElection(2);
+        partyManager.createElection(START, END_2H, DEADLINE);
 
         setupValidMember();
         vm.prank(user1);
@@ -417,63 +392,66 @@ contract PoliticalPartyManagerTest is Test {
     }
 
     function testAdminCanCreateElection() public {
-        uint256 electionId = 101;
         vm.prank(address(this));
         nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
         vm.prank(chairman);
-        partyManager.createElection(2);
+        partyManager.createElection(START, END_2H, DEADLINE);
         assertEq(partyManager.checkElectionStatus(electionId).id, 101);
     }
 
     function testAttackerCantCreateElection() public {
-        uint256 electionId = 101;
         vm.prank(address(this));
         nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
         vm.prank(chairman);
-        partyManager.createElection(2);
+        partyManager.createElection(START, END_2H, DEADLINE);
 
         vm.prank(attacker);
         vm.expectRevert();
-        partyManager.createElection(2);
+        partyManager.createElection(START, END_2H, DEADLINE);
         assertEq(partyManager.checkElectionStatus(electionId).id, 101);
     }
 
     function testMembersCanVoteforPrimaryElection() public {
-        uint256 electionId = 101;
         vm.prank(address(this));
         nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
         vm.prank(chairman);
-        partyManager.createElection(2);
-    
+        partyManager.createElection(START, END_2H, DEADLINE);
+
         setupValidMember();
-        vm.startPrank(user1);
+        vm.prank(user1);
         partyManager.registerCandidate("Alice", 2345);
+
+        vm.warp(block.timestamp + START + 1);
+
+        vm.prank(user1);
         partyManager.voteforPrimaryElection(1, electionId);
-        vm.stopPrank();
+
         assertEq(partyManager.getPartyCandidate(electionId, 1).voteCount, 1);
-        assertTrue(partyManager.getPartyMember(user1).hasVoted);
+        assertTrue(partyManager.hasVoted(electionId, user1));
     }
 
     function testMembersCantVoteTwice() public {
-        uint256 electionId = 101;
         vm.prank(address(this));
         nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
         vm.prank(chairman);
-        partyManager.createElection(2);
-    
+        partyManager.createElection(START, END_2H, DEADLINE);
+
         setupValidMember();
-        vm.startPrank(user1);
+        vm.prank(user1);
         partyManager.registerCandidate("Alice", 2345);
+
+        vm.warp(block.timestamp + START + 1);
+
+        vm.prank(user1);
         partyManager.voteforPrimaryElection(1, electionId);
-        vm.stopPrank();
 
         vm.prank(user1);
         vm.expectRevert();
@@ -481,29 +459,29 @@ contract PoliticalPartyManagerTest is Test {
     }
 
     function testMemberCantVoteWhenElectionEnded() public {
-        uint256 electionId = 101;
         vm.prank(chairman);
         partyManager.setElectionId();
         vm.prank(chairman);
-        uint startTime = block.timestamp; 
-        partyManager.createElection(1);
-    
+        uint256 creationTime = block.timestamp;
+        partyManager.createElection(START, END_1H, DEADLINE);
+
         setupValidMember();
-        vm.startPrank(user1);
+        vm.prank(user1);
         partyManager.registerCandidate("Alice", 2345);
-        vm.warp(startTime + 7203);
+
+        vm.warp(creationTime + END_1H + 1);
+
+        vm.prank(user1);
         vm.expectRevert();
         partyManager.voteforPrimaryElection(1, electionId);
-        vm.stopPrank();
     }
 
     function testMemberCantVotewithInvalidCandidateId() public {
-        uint256 electionId = 101;
         vm.prank(chairman);
         partyManager.setElectionId();
         vm.prank(chairman);
-        partyManager.createElection(2);
-    
+        partyManager.createElection(START, END_2H, DEADLINE);
+
         setupValidMember();
         vm.startPrank(user1);
         partyManager.registerCandidate("Alice", 2345);
@@ -513,15 +491,13 @@ contract PoliticalPartyManagerTest is Test {
     }
 
     function testAttackerCantVoteForPrimaryElection() public {
-        uint256 electionId = 101;
         vm.prank(address(this));
         nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
-
         vm.prank(chairman);
-        partyManager.createElection(2);
-    
+        partyManager.createElection(START, END_2H, DEADLINE);
+
         setupValidMember();
         vm.prank(user1);
         partyManager.registerCandidate("Alice", 2345);
@@ -533,42 +509,48 @@ contract PoliticalPartyManagerTest is Test {
     }
 
     function testAdminCanDeclareWinner() public {
-        uint256 electionId = 101;
         vm.prank(address(this));
         nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
         vm.startPrank(chairman);
-        uint startTime = block.timestamp; 
-        partyManager.createElection(1);
+        uint256 creationTime = block.timestamp;
+        partyManager.createElection(START, END_1H, DEADLINE);
         vm.stopPrank();
 
         setupValidMember();
-        vm.startPrank(user1);
+        vm.prank(user1);
         partyManager.registerCandidate("Alice", 2345);
+
+        vm.warp(creationTime + START + 1);
+
+        vm.prank(user1);
         partyManager.voteforPrimaryElection(1, electionId);
-        vm.stopPrank();
-        vm.warp(startTime + 7203);
+
+        vm.warp(creationTime + END_1H + 1);
 
         vm.prank(chairman);
         partyManager.declareWinner(electionId);
     }
 
     function testAdminCantDeclareWinnerWhenElectionisOngoing() public {
-        uint256 electionId = 101;
         vm.prank(address(this));
         nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
         vm.startPrank(chairman);
-        partyManager.createElection(1);
+        uint256 creationTime = block.timestamp;
+        partyManager.createElection(START, END_1H, DEADLINE);
         vm.stopPrank();
 
         setupValidMember();
-        vm.startPrank(user1);
+        vm.prank(user1);
         partyManager.registerCandidate("Alice", 2345);
+
+        vm.warp(creationTime + START + 1);
+
+        vm.prank(user1);
         partyManager.voteforPrimaryElection(1, electionId);
-        vm.stopPrank();
 
         vm.prank(chairman);
         vm.expectRevert();
@@ -576,52 +558,115 @@ contract PoliticalPartyManagerTest is Test {
     }
 
     function testAttackerCantDeclareWinner() public {
-        uint256 electionId = 101;
         vm.prank(address(this));
         nationalElectionBody.setElectionId(electionId);
         vm.prank(chairman);
         partyManager.setElectionId();
         vm.startPrank(chairman);
-        uint startTime = block.timestamp; 
-        partyManager.createElection(1);
+        uint256 creationTime = block.timestamp;
+        partyManager.createElection(START, END_1H, DEADLINE);
         vm.stopPrank();
 
         setupValidMember();
-        vm.startPrank(user1);
+        vm.prank(user1);
         partyManager.registerCandidate("Alice", 2345);
+
+        vm.warp(creationTime + START + 1);
+
+        vm.prank(user1);
         partyManager.voteforPrimaryElection(1, electionId);
-        vm.stopPrank();
-        vm.warp(startTime + 7203);
+
+        vm.warp(creationTime + END_1H + 1);
 
         vm.prank(attacker);
         vm.expectRevert();
         partyManager.declareWinner(electionId);
     }
 
-    // function testRegisterWinnerWithElectionBody() public {
-    //     uint256 electionId = 101;
-    //     vm.prank(chairman);
-    //     partyManager.setElectionId();
-    //     vm.startPrank(chairman);
-    //     uint startTime = block.timestamp; 
-    //     partyManager.createElection(1);
-    //     vm.stopPrank();
+    function testRegisterWinnerWithElectionBody() public {
+        vm.prank(address(this));
+        nationalElectionBody.setElectionId(electionId);
+        vm.prank(chairman);
+        partyManager.setElectionId();
+        vm.startPrank(chairman);
+        uint256 creationTime = block.timestamp;
+        partyManager.createElection(START, END_1H, DEADLINE);
+        vm.stopPrank();
 
-    //     setupValidMember();
-    //     vm.startPrank(user1);
-    //     partyManager.registerCandidate("Alice", 2345);
-    //     partyManager.voteforPrimaryElection(1, electionId);
-    //     vm.stopPrank();
-    //     vm.warp(startTime + 7203);
+        setupValidMember();
+        vm.prank(user1);
+        partyManager.registerCandidate("Alice", 2345);
 
-    //     vm.prank(address(this));
-    //     nationalElectionBody.grantRole(nationalElectionBody.PARTY_PRIMARIES_ROLE(), address(partyManager));
+        vm.warp(creationTime + START + 1);
 
-    //     vm.startPrank(chairman);
-    //     partyManager.declareWinner(electionId);
-    //     partyManager.registerWinnerWithElectionBody(electionId);
-    //     vm.stopPrank();
+        vm.prank(user1);
+        partyManager.voteforPrimaryElection(1, electionId);
 
-    //     assertEq(nationalElectionBody.getPartyCandidate("APC", electionId).Address, user1);
-    // }   
+        vm.warp(creationTime + END_1H + 1);
+
+        // Grant partyManager the PARTY_PRIMARIES_ROLE so it can call setCandidate on NationalElectionBody
+        vm.prank(address(this));
+        electionBodyInstance.grantRole(electionBodyInstance.PARTY_PRIMARIES_ROLE(), address(partyManager));
+
+        // Register APC as a party in NationalElectionBody and approve it so setCandidate passes the approval check
+        vm.prank(centralBankAddress);
+        nationalToken.mint(chairman, 100_000 * (10 ** 18));
+        vm.startPrank(chairman);
+        nationalToken.approve(address(electionBodyInstance), electionBodyInstance.registrationFee());
+        electionBodyInstance.registerParty("Apc", electionId, "Apc");
+        vm.stopPrank();
+        vm.prank(address(this));
+        electionBodyInstance.approveAppliedParty("Apc", electionId);
+
+        vm.startPrank(chairman);
+        partyManager.declareWinner(electionId);
+        partyManager.registerWinnerWithElectionBody(electionId);
+        vm.stopPrank();
+
+        assertEq(electionBodyInstance.getPartyCandidate("Apc", electionId).Address, user1);
+        assertEq(electionBodyInstance.getPartyCandidate("Apc", electionId).Name, "Alice");
+        assertTrue(partyManager.winnerDeclared(electionId));
+    }
+
+    function testCantRegisterWinnerBeforeDeclaring() public {
+        vm.prank(address(this));
+        nationalElectionBody.setElectionId(electionId);
+        vm.prank(chairman);
+        partyManager.setElectionId();
+        vm.prank(chairman);
+        partyManager.createElection(START, END_1H, DEADLINE);
+
+        vm.prank(chairman);
+        vm.expectRevert(
+            abi.encodeWithSelector(PoliticalPartyManager.ElectionIsOngoing.selector)
+        );
+        partyManager.registerWinnerWithElectionBody(electionId);
+    }
+
+    function testAttackerCantRegisterWinnerWithElectionBody() public {
+        vm.prank(address(this));
+        nationalElectionBody.setElectionId(electionId);
+        vm.prank(chairman);
+        partyManager.setElectionId();
+        vm.startPrank(chairman);
+        uint256 creationTime = block.timestamp;
+        partyManager.createElection(START, END_1H, DEADLINE);
+        vm.stopPrank();
+
+        setupValidMember();
+        vm.prank(user1);
+        partyManager.registerCandidate("Alice", 2345);
+
+        vm.warp(creationTime + START + 1);
+        vm.prank(user1);
+        partyManager.voteforPrimaryElection(1, electionId);
+
+        vm.warp(creationTime + END_1H + 1);
+        vm.prank(chairman);
+        partyManager.declareWinner(electionId);
+
+        vm.prank(attacker);
+        vm.expectRevert();
+        partyManager.registerWinnerWithElectionBody(electionId);
+    }
 }

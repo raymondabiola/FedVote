@@ -54,7 +54,7 @@ contract NationalElectionBody is AccessControl, ReentrancyGuard {
     mapping(uint256 => mapping(string => uint256)) public applicationPartyToId;
 
     // partyAcronym => permanent global partyId (never changes across elections)
-    mapping(string => uint256) public partyNameToId;
+    mapping(string => uint256) public partyAcronymToId;
 
     // partyId => electionId => candidate struct
     mapping(uint256 => mapping(uint256 => CandidateStruct)) public partyCandidate;
@@ -73,6 +73,8 @@ contract NationalElectionBody is AccessControl, ReentrancyGuard {
     error InsufficientContractBal();
     error InvalidAmount();
     error InvalidAddress();
+    error ElectionExists();
+    error AlreadyAppliedForThisElection();
 
     //  EVENTS
 
@@ -117,13 +119,14 @@ contract NationalElectionBody is AccessControl, ReentrancyGuard {
     }
 
     function updateRegFee(uint _amount) external onlyRole(DEFAULT_ADMIN_ROLE){
+        if(_amount == 0) revert InvalidAmount();
         registrationFee = _amount;
     }
 
     //  ELECTION ID
 
     function setElectionId(uint256 _electionId) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(!electionIdExist[_electionId], "ElectionId already exists");
+        if(electionIdExist[_electionId])revert  ElectionExists();
         electionId = _electionId;
         electionIdExist[_electionId] = true;
     }
@@ -137,21 +140,18 @@ contract NationalElectionBody is AccessControl, ReentrancyGuard {
     ) external nonReentrant{
         if (_electionId != electionId) revert NotCurrentElection();
 
-        require(
-            applicationPartyToId[_electionId][_partyAcronym] == 0,
-            "Already applied for this election"
-        );
+        if(applicationPartyToId[_electionId][_partyAcronym] != 0) revert AlreadyAppliedForThisElection();
 
         uint256 assignedPartyId;
 
-        if (partyNameToId[_partyAcronym] > 0) {
+        if (partyAcronymToId[_partyAcronym] > 0) {
             // Returning party: reuse permanent global ID
-            assignedPartyId = partyNameToId[_partyAcronym];
+            assignedPartyId = partyAcronymToId[_partyAcronym];
         } else {
             // New party: mint a permanent ID
             PartyCount++;
             assignedPartyId = PartyCount;
-            partyNameToId[_partyAcronym] = assignedPartyId;
+            partyAcronymToId[_partyAcronym] = assignedPartyId;
         }
 
         Party memory party = Party({
@@ -175,25 +175,26 @@ contract NationalElectionBody is AccessControl, ReentrancyGuard {
     //  ADMIN: APPROVE
 
     // Approves a pending party application for the current election.
-    function approveAppliedParty(string memory _partyAcronym) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        uint256 partyId = applicationPartyToId[electionId][_partyAcronym];
+    function approveAppliedParty(string memory _partyAcronym, uint256 _electionId) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        uint256 partyId = applicationPartyToId[_electionId][_partyAcronym];
 
         if (partyId == 0 || partyId > PartyCount) {
             revert InvalidPartyId(partyId, PartyCount);
         }
 
-        Party storage application = appliedParties[electionId][partyId];
+        Party storage application = appliedParties[_electionId][partyId];
 
         if (application.status == Status.approved) revert PartyAlreadyRegistered(application.status);
         if (application.status == Status.rejected)  revert PartyNotRegistered(application.status);
 
         application.status = Status.approved;
 
-        Party storage registered = registeredParties[electionId][partyId];
+        Party storage registered = registeredParties[_electionId][partyId];
         registered.id           = partyId;
         registered.partyName    = application.partyName;
         registered.partyAddress = application.partyAddress;
         registered.partyAcronym = application.partyAcronym;
+        registered.feePaid = application.feePaid;
         registered.status       = Status.approved;
 
         emit PartyRegistered(partyId, application.partyAcronym, application.partyAddress, "Successfully registered");
@@ -203,23 +204,26 @@ contract NationalElectionBody is AccessControl, ReentrancyGuard {
 
     function rejectPartyRegistration(
         string memory _partyAcronym,
+        uint256 _electionId,
         string memory _reason
-    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        uint256 partyId = applicationPartyToId[electionId][_partyAcronym];
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) nonReentrant {
+        uint256 partyId = applicationPartyToId[_electionId][_partyAcronym];
 
         if (partyId == 0 || partyId > PartyCount) {
             revert InvalidPartyId(partyId, PartyCount);
         }
 
-        Party storage application = appliedParties[electionId][partyId];
+        Party storage application = appliedParties[_electionId][partyId];
 
         if (application.status == Status.approved) revert PartyAlreadyRegistered(application.status);
         if (application.status == Status.rejected)  revert PartyNotRegistered(application.status);
 
         application.status = Status.rejected;
+        delete applicationPartyToId[_electionId][_partyAcronym];
 
         // Refund to the address that paid at application time
-        nationalToken.transfer(application.partyAddress, application.feePaid);
+        bool success = nationalToken.transfer(application.partyAddress, application.feePaid);
+        if (!success) revert PaymentFailed();
 
         emit RegistrationRejected(partyId, application.partyAcronym, application.partyAddress, _reason);
     }
@@ -232,7 +236,8 @@ contract NationalElectionBody is AccessControl, ReentrancyGuard {
         string memory _partyAcronym,
         address _candidateAddress
     ) external onlyRole(PARTY_PRIMARIES_ROLE) {
-        uint256 partyId = partyNameToId[_partyAcronym];
+        uint256 partyId = partyAcronymToId[_partyAcronym];
+        if(_electionId != electionId) revert NotCurrentElection();
         if (partyId == 0) revert InvalidPartyId(partyId, PartyCount);
 
         // Party must be approved for this specific election before a candidate can be set
@@ -253,7 +258,8 @@ contract NationalElectionBody is AccessControl, ReentrancyGuard {
         if(_to == address(0)) revert InvalidAddress();
         if(_amount == 0) revert InvalidAmount();
         if(_amount > nationalToken.balanceOf(address(this))) revert InsufficientContractBal();
-        nationalToken.transfer(_to, _amount);
+        bool success = nationalToken.transfer(_to, _amount);
+        if (!success) revert PaymentFailed();
     }
 
     //  VIEW FUNCTIONS
@@ -265,7 +271,7 @@ contract NationalElectionBody is AccessControl, ReentrancyGuard {
         string memory _partyAcronym,
         uint256 _electionId
     ) external view returns (CandidateStruct memory) {
-        uint256 partyId = partyNameToId[_partyAcronym];
+        uint256 partyId = partyAcronymToId[_partyAcronym];
         return partyCandidate[partyId][_electionId];
     }
 
@@ -273,7 +279,7 @@ contract NationalElectionBody is AccessControl, ReentrancyGuard {
         string memory _partyAcronym,
         uint256 _electionId
     ) external view returns (bool) {
-        uint256 partyId = partyNameToId[_partyAcronym];
+        uint256 partyId = partyAcronymToId[_partyAcronym];
         if (partyId == 0) return false;
         return registeredParties[_electionId][partyId].status == Status.approved;
     }

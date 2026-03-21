@@ -14,12 +14,12 @@ contract DeployScript is Script {
     DemocracyBadge public democracyBadge;
     Election public elections;
     NationalElectionBody public nationalElectionBody;
-    NationalToken public nationalToken;
+    // NationalToken public nationalToken;
     PoliticalPartiesManagerFactory public politicalPartiesManagerFactory;
     Registry public registry;
-    VoterIncentives public voterIncentives;
+    // VoterIncentives public voterIncentives;
 
-    uint baseIncentives = 1000e18;
+    // uint baseIncentives = 1000e18;
 
     uint256 deployerPrivateKey;
     address deployerAddress;
@@ -35,6 +35,10 @@ contract DeployScript is Script {
 
     uint256 partyCChairmanPrivateKey;
     address partyCChairmanAddress;
+
+    address nationalTokenAddress;
+    address democracyBadgeAddress;
+    address registryAddress;
 
     function run() external {
 
@@ -53,21 +57,25 @@ contract DeployScript is Script {
         partyCChairmanPrivateKey = vm.envUint("PARTYC_CHAIRMAN_PKEY");
         partyCChairmanAddress = vm.addr(partyCChairmanPrivateKey);
 
-        vm.startBroadcast(deployerPrivateKey);
-        deployNationalTokenContract();
-        vm.stopBroadcast();
+        nationalTokenAddress = vm.envAddress("TOKEN_ADDRESS");
+        democracyBadgeAddress = vm.envAddress("DEMOCRACY_ADDRESS");
+        registryAddress = vm.envAddress("REGISTRY_ADDRESS");
+
+        // vm.startBroadcast(deployerPrivateKey);
+        // deployNationalTokenContract();
+        // vm.stopBroadcast();
 
         vm.startBroadcast(deployerPrivateKey);
         deployElectionsRelatedContracts();
         vm.stopBroadcast();
 
-        vm.startBroadcast(deployerPrivateKey);
-        deployVoterIncentivesContract();
-        vm.stopBroadcast();
+        // vm.startBroadcast(deployerPrivateKey);
+        // deployVoterIncentivesContract();
+        // vm.stopBroadcast();
 
-        vm.startBroadcast(centralBankPrivateKey);
-        grantTokenRelatedContractRoles();
-        vm.stopBroadcast();
+        // vm.startBroadcast(centralBankPrivateKey);
+        // grantTokenRelatedContractRoles();
+        // vm.stopBroadcast();
 
         vm.startBroadcast(deployerPrivateKey);
         createPartiesFromFactory();
@@ -77,31 +85,31 @@ contract DeployScript is Script {
     }
 
     function deployElectionsRelatedContracts() internal {
-        democracyBadge = new DemocracyBadge("DEMOCRACYBADGE", "DBADGE");
-        registry = new Registry();
+        democracyBadge = DemocracyBadge(democracyBadgeAddress);
+        registry = Registry(registryAddress);
         politicalPartiesManagerFactory = new PoliticalPartiesManagerFactory();
-        nationalElectionBody = new NationalElectionBody(address(nationalToken));
-        elections = new Election(address(registry), address(democracyBadge), address(nationalElectionBody));
+        nationalElectionBody = new NationalElectionBody(nationalTokenAddress);
+        elections = new Election(registryAddress, democracyBadgeAddress, address(nationalElectionBody));
     }
 
-    function deployNationalTokenContract() internal {
-        nationalToken = new NationalToken(centralBankAddress);
-    }
+    // function deployNationalTokenContract() internal {
+    //     nationalToken = new NationalToken(centralBankAddress);
+    // }
 
-    function deployVoterIncentivesContract() internal {
-        voterIncentives = new VoterIncentives(address(democracyBadge), address(nationalToken), address(registry), baseIncentives);
-    }
+    // function deployVoterIncentivesContract() internal {
+    //     voterIncentives = new VoterIncentives(address(democracyBadge), address(nationalToken), address(registry), baseIncentives);
+    // }
 
     function createPartiesFromFactory() internal {
-        politicalPartiesManagerFactory.createNewPoliticalParty(partyAChairmanAddress, "PartyA", address(nationalToken), address(nationalElectionBody), address(registry));
-        politicalPartiesManagerFactory.createNewPoliticalParty(partyBChairmanAddress, "PartyB", address(nationalToken), address(nationalElectionBody), address(registry));
-        politicalPartiesManagerFactory.createNewPoliticalParty(partyCChairmanAddress, "PartyC", address(nationalToken), address(nationalElectionBody), address(registry));
+        politicalPartiesManagerFactory.createNewPoliticalParty(partyAChairmanAddress, "PartyA", nationalTokenAddress, address(nationalElectionBody), registryAddress);
+        politicalPartiesManagerFactory.createNewPoliticalParty(partyBChairmanAddress, "PartyB", nationalTokenAddress, address(nationalElectionBody), registryAddress);
+        politicalPartiesManagerFactory.createNewPoliticalParty(partyCChairmanAddress, "PartyC", nationalTokenAddress, address(nationalElectionBody), registryAddress);
     }
 
-    function grantTokenRelatedContractRoles() internal { 
-        bytes32 minterRole = nationalToken.MINTER_ROLE();
-        nationalToken.grantRole(minterRole, address(voterIncentives));
-    }
+    // function grantTokenRelatedContractRoles() internal { 
+    //     bytes32 minterRole = nationalToken.MINTER_ROLE();
+    //     nationalToken.grantRole(minterRole, address(voterIncentives));
+    // }
 
     function grantElectionsRelatedContractRoles() internal {
         bytes32 electionsContractRoleRegistry = registry.ELECTIONS_CONTRACT_ROLE();
