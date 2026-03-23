@@ -11,6 +11,19 @@ import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
+    <BrowserRouter>
+      <Web3Provider>
         <App />
+        <Toaster
+          position="bottom-right"
+          toastOptions={{
+            className: 'toast-custom',
+            style: { background: '#1a1a2e', color: '#fff', borderRadius: '12px', fontSize: '14px' },
+            success: { iconTheme: { primary: '#6C63FF', secondary: '#fff' } },
+            error: { iconTheme: { primary: '#ef4444', secondary: '#fff' } },
+          }}
+        />
+      </Web3Provider>
+    </BrowserRouter>
   </React.StrictMode>
 );
