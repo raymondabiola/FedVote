@@ -5,7 +5,8 @@
 A decentralized election protocol inspired by the Nigerian voting system, designed to work globally while preventing double voting and rewarding civic participation.
 
 ## MVP Website
-
+## MVP Website
+[MVP Website](https://fed-vote.vercel.app/party)
 
 ## Vision 
 
