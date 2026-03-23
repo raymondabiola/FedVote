@@ -1,0 +1,28 @@
+NationalToken: 0x6d28b8848ff5eb18cf85fefe1710178c40637cb6
+DemocracyBadge: 0xeb3daa9622c4cc74dff2cc8a6a1ab3df99eba106
+Registry: 0xcce6b1fc03148c1a79793aecf13fddd67dcedbb8
+PoliticalPartiesManagerFactory: 0x613fda232f9ebbdcaf98257b620f8c3b610304bf
+NationalElectionBody: 0x6932ef37faef06b1291a3fe8e14a211f9a192ac2
+Election: 0xadea9ff5d051b620e45bc8ca72c4f9effbc64f04
+VoterIncentives: 0x89363c2dc0558928398f58f6437d3f903a684268
+PartyA:0x41fd48d49273dfa0400262b92abc90eb3a9fba57
+PartyB:0x9feaa902131636faea509414a08c896911d175cd
+PartyC:0x9ece2056913b2f4e6182a0f0fd37cc00ad366114
+
+
+Legacy addresses
+PoliticalPartiesManagerFactory: 0xae9135b3960bc5022d99e7e112492f5022e34e85
+NationalElectionBody: 0xaf675c310a219f000a8281fd33df4ce17f0b55b1
+Election: 0xc1a3b9d0e48825ecaa33ded8fc719f9555c52168
+PartyA:0x74c9125fe8a29fccc701d8a636dcacf30b8e8b57
+PartyB:0xa2c800a77485663fc91318a9af4599d65cc819f5
+PartyC:0xd214845d7a2e6c04437ceb78d760a0ea115b5b6b
+
+
+{ "nin": "98888888881", "name": "Raymond", "address": "0x9FD152Eb32f453D21271558c3Ae89AE6a116f869" }
+{ "nin": "98888888882", "name": "Dolapo", "address": "0x95e864bc6ef2bdd5713da42a28c876f34f6c625d" },
+{ "nin": "98888888883", "name": "Musab", "address": "0x22D0fF871E0C2D73FbfB6C5C7C3f79FB547AC37D" },
+{ "nin": "98888888884", "name": "James", "address": "0x1Ef0E1De9F0ac2255a42e8987692f89F296dd670" },
+{ "nin": "98888888885", "name": "Anthony", "address": "0xa00E2C8B01DF64B14F93D6A429cFFeff7E3258A3" },
+{ "nin": "98888888880", "name": "Emejulu", "address": "0x1915486b06e3e013cF8F65c9BDd85bC9ccFDD27D"},
+{ "nin": "98888888886", "name": "Gogo", "address": "0x7571707A5dF03406772508A1858DA3f94AE27C12"}
